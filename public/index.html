@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LibSync — Library Book Finder & Management</title>
+  <meta name="description" content="Find exactly where any book is located in the library — rack, row, shelf — and check real-time availability." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ─── Toast container ─────────────────────────────────────────── -->
+  <div id="toast-container" aria-live="polite"></div>
+
+  <!-- ─── Header ──────────────────────────────────────────────────── -->
+  <header id="app-header">
+    <div class="header-inner">
+      <div class="logo" id="logo">
+        <span class="logo-icon">📚</span>
+        <h1>Lib<span class="accent">Sync</span></h1>
+      </div>
+      <p class="tagline">Locate any book instantly — rack, row &amp; shelf</p>
+    </div>
+  </header>
+
+  <!-- ─── Search Section ──────────────────────────────────────────── -->
+  <section id="search-section">
+    <div class="search-wrapper">
+      <div class="search-box" id="search-box">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input
+          type="text"
+          id="search-input"
+          placeholder="Search by title, author, or rack location…"
+          autocomplete="off"
+        />
+        <button id="clear-btn" class="clear-btn hidden" title="Clear search" aria-label="Clear search">&times;</button>
+      </div>
+      <div class="search-meta">
+        <span id="result-count" class="result-count"></span>
+        <div class="filter-pills">
+          <button class="pill active" data-filter="all" id="filter-all">All</button>
+          <button class="pill" data-filter="available" id="filter-available">Available</button>
+          <button class="pill" data-filter="checked-out" id="filter-checked-out">Checked Out</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Books Grid ──────────────────────────────────────────────── -->
+  <main id="main-content">
+    <div id="books-grid" class="books-grid"></div>
+    <div id="empty-state" class="empty-state hidden">
+      <span class="empty-icon">🔍</span>
+      <h2>No books found</h2>
+      <p>Try a different search term or clear your filters.</p>
+    </div>
+    <div id="loading-state" class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading library catalogue…</p>
+    </div>
+  </main>
+
+  <!-- ─── Issue Modal ─────────────────────────────────────────────── -->
+  <div id="issue-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="issue-modal-title">
+    <div class="modal">
+      <button class="modal-close" id="issue-modal-close" aria-label="Close">&times;</button>
+      <h2 id="issue-modal-title">Issue Book</h2>
+      <p id="issue-modal-book" class="modal-book-title"></p>
+      <label for="student-id-input" class="modal-label">Student ID</label>
+      <input type="text" id="student-id-input" class="modal-input" placeholder="e.g. STU-2024-042" autocomplete="off" />
+      <div class="modal-actions">
+        <button id="issue-cancel-btn" class="btn btn-ghost">Cancel</button>
+        <button id="issue-confirm-btn" class="btn btn-primary">Confirm Issue</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

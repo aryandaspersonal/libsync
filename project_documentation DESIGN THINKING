@@ -1,0 +1,452 @@
+# LibraFind — Complete Project Documentation
+
+A full-stack Library Book Finder & Management System. Below is a detailed breakdown of **every file** in the project.
+
+---
+
+## Project Structure
+
+```
+design thinking/
+├── package.json          ← Project manifest & scripts
+├── db.js                 ← MySQL connection pool
+├── seed.js               ← Database setup & dummy data
+├── server.js             ← Express API server (backend)
+└── public/               ← Frontend (served as static files)
+    ├── index.html        ← HTML structure
+    ├── style.css         ← All styling (dark glassmorphism theme)
+    └── script.js         ← Client-side logic (search, issue, return)
+```
+
+---
+
+## 1. [`package.json`](file:///c:/Users/offic/OneDrive/Desktop/design%20thinking/package.json)
+
+**Purpose:** Project manifest — defines metadata, npm scripts, and dependencies.
+
+| Field | Value |
+|-------|-------|
+| `name` | `library-book-finder` |
+| `main` | `server.js` |
+
+### Scripts
+
+| Command | What it does |
+|---------|-------------|
+| `npm start` | Runs `node server.js` — starts the Express server on port 3000 |
+| `npm run seed` | Runs `node seed.js` — creates the database, tables, and inserts 20 test books |
+| `npm run dev` | Same as `npm start` (alias for convenience) |
+
+### Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `express` | ^4.18.2 | Web framework for routing and serving static files |
+| `mysql2` | ^3.6.5 | MySQL driver with `Promise`-based API and connection pooling |
+
+---
+
+## 2. [`db.js`](file:///c:/Users/offic/OneDrive/Desktop/design%20thinking/db.js)
+
+**Purpose:** Creates and exports a **MySQL connection pool** that all server routes share.
+
+### How it works
+
+```js
+const pool = mysql.createPool({
+  host: 'localhost',
+  user: 'root',
+  password: '****',        // Your MySQL root password
+  database: 'library_db',  // Created by seed.js
+  connectionLimit: 10,     // Max 10 simultaneous connections
+});
+
+module.exports = pool;
+```
+
+| Setting | Value | Why |
+|---------|-------|-----|
+| `waitForConnections` | `true` | Queues requests when all 10 connections are busy instead of throwing |
+| `connectionLimit` | `10` | Prevents overwhelming MySQL with too many connections |
+| `queueLimit` | `0` | Unlimited queue length (no request is rejected) |
+
+> [!NOTE]
+> This file is imported by `server.js`. Every API call uses `pool.query()` or `pool.getConnection()` from this pool.
+
+---
+
+## 3. [`seed.js`](file:///c:/Users/offic/OneDrive/Desktop/design%20thinking/seed.js)
+
+**Purpose:** One-time setup script. Run with `npm run seed` before first use.
+
+### What it does (in order)
+
+| Step | Action |
+|------|--------|
+| 1 | Connects to MySQL **without** selecting a database |
+| 2 | `CREATE DATABASE IF NOT EXISTS library_db` |
+| 3 | Creates the `books` table |
+| 4 | Creates the `transactions` table (with foreign key to `books`) |
+| 5 | Clears any existing data & resets auto-increment |
+| 6 | Inserts **20 books** with realistic rack locations |
+| 7 | Inserts **4 sample transactions** (books that are pre-checked-out) |
+
+### Database Schema
+
+#### `books` table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | `INT AUTO_INCREMENT` | Primary key |
+| `title` | `VARCHAR(255)` | Book title |
+| `author` | `VARCHAR(255)` | Author name |
+| `isbn` | `VARCHAR(20)` | ISBN number |
+| `rack_location` | `VARCHAR(100)` | Physical location, e.g. `"Floor 2, Row B, Rack 4"` |
+| `is_available` | `TINYINT(1)` | `1` = on shelf, `0` = checked out |
+| `created_at` | `TIMESTAMP` | Auto-set on insert |
+
+#### `transactions` table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | `INT AUTO_INCREMENT` | Primary key |
+| `book_id` | `INT` | Foreign key → `books.id` (CASCADE on delete) |
+| `student_id` | `VARCHAR(50)` | ID of student who borrowed the book |
+| `issue_date` | `DATETIME` | When the book was issued (defaults to NOW) |
+| `return_date` | `DATETIME NULL` | When returned (`NULL` = still checked out) |
+
+### Seeded Books (20 total)
+
+| # | Title | Rack Location | Available? |
+|---|-------|---------------|------------|
+| 1 | The Great Gatsby | Floor 1, Row A, Rack 1 | ✅ |
+| 2 | To Kill a Mockingbird | Floor 1, Row A, Rack 2 | ✅ |
+| 3 | 1984 | Floor 1, Row B, Rack 3 | ✅ |
+| 4 | Pride and Prejudice | Floor 1, Row C, Rack 1 | ❌ (checked out) |
+| 5 | The Catcher in the Rye | Floor 2, Row A, Rack 2 | ✅ |
+| 6 | Moby-Dick | Floor 2, Row B, Rack 4 | ✅ |
+| 7 | Brave New World | Floor 2, Row C, Rack 1 | ❌ (checked out) |
+| 8 | The Hobbit | Floor 2, Row D, Rack 3 | ✅ |
+| 9 | Fahrenheit 451 | Floor 3, Row A, Rack 1 | ✅ |
+| 10 | Jane Eyre | Floor 3, Row A, Rack 2 | ✅ |
+| 11 | Wuthering Heights | Floor 3, Row B, Rack 1 | ✅ |
+| 12 | The Odyssey | Floor 3, Row C, Rack 4 | ❌ (checked out) |
+| 13 | Crime and Punishment | Floor 1, Row D, Rack 2 | ✅ |
+| 14 | Great Expectations | Floor 1, Row D, Rack 3 | ✅ |
+| 15 | The Art of War | Floor 2, Row A, Rack 1 | ✅ |
+| 16 | Sapiens | Floor 2, Row B, Rack 2 | ✅ |
+| 17 | Atomic Habits | Floor 3, Row D, Rack 1 | ✅ |
+| 18 | Thinking, Fast and Slow | Floor 3, Row D, Rack 2 | ❌ (checked out) |
+| 19 | Dune | Floor 2, Row C, Rack 3 | ✅ |
+| 20 | The Alchemist | Floor 1, Row B, Rack 1 | ✅ |
+
+---
+
+## 4. [`server.js`](file:///c:/Users/offic/OneDrive/Desktop/design%20thinking/server.js)
+
+**Purpose:** The Express backend — serves the frontend and exposes the REST API.
+
+### Middleware
+
+| Middleware | Purpose |
+|-----------|---------|
+| `express.json()` | Parses incoming JSON request bodies |
+| `express.static('public')` | Serves `index.html`, `style.css`, `script.js` as static files |
+
+### API Endpoints
+
+---
+
+#### `GET /api/books`
+
+**Purpose:** Fetch all books, optionally filtered by search query.
+
+| Query Param | Type | Description |
+|-------------|------|-------------|
+| `search` | `string` (optional) | Filters books where `title`, `author`, OR `rack_location` contains this text (uses SQL `LIKE %...%`) |
+
+**Response:**
+```json
+{
+  "success": true,
+  "books": [
+    {
+      "id": 1,
+      "title": "The Great Gatsby",
+      "author": "F. Scott Fitzgerald",
+      "isbn": "978-0743273565",
+      "rack_location": "Floor 1, Row A, Rack 1",
+      "is_available": 1
+    }
+  ]
+}
+```
+
+**Sort order:** `rack_location ASC`, then `title ASC`
+
+---
+
+#### `GET /api/books/:id`
+
+**Purpose:** Fetch a single book by its ID.
+
+**Response:** `{ success: true, book: { ... } }` or `404` if not found.
+
+---
+
+#### `POST /api/books/issue`
+
+**Purpose:** Check out a book to a student.
+
+**Request body:**
+```json
+{ "bookId": 1, "studentId": "STU-2024-042" }
+```
+
+**What it does (inside a transaction):**
+1. Locks the book row with `SELECT ... FOR UPDATE` (prevents race conditions)
+2. Checks the book exists and `is_available = 1`
+3. Sets `is_available = 0`
+4. Inserts a new record into `transactions` with the current timestamp
+5. Commits the transaction
+
+**Error responses:**
+- `400` — Missing `bookId` or `studentId`
+- `404` — Book not found
+- `409` — Book is already checked out
+
+---
+
+#### `POST /api/books/return`
+
+**Purpose:** Return a checked-out book to the shelf.
+
+**Request body:**
+```json
+{ "bookId": 7 }
+```
+
+**What it does (inside a transaction):**
+1. Locks the book row with `SELECT ... FOR UPDATE`
+2. Checks the book exists and `is_available = 0`
+3. Sets `is_available = 1`
+4. Updates the most recent open transaction for this book, setting `return_date = NOW()`
+5. Commits the transaction
+
+**Error responses:**
+- `400` — Missing `bookId`
+- `404` — Book not found
+- `409` — Book is already on the shelf
+
+> [!TIP]
+> Both issue and return use **MySQL transactions with row-level locking** (`FOR UPDATE`) to prevent two simultaneous requests from corrupting data.
+
+---
+
+## 5. [`public/index.html`](file:///c:/Users/offic/OneDrive/Desktop/design%20thinking/public/index.html)
+
+**Purpose:** The single-page HTML structure of the app.
+
+### Page Sections
+
+| Section | Element ID | Description |
+|---------|-----------|-------------|
+| **Toast Container** | `#toast-container` | Fixed top-right area for notification pop-ups |
+| **Header** | `#app-header` | Logo ("LibraFind") + tagline |
+| **Search Bar** | `#search-section` | Sticky search input with magnifying glass icon + clear button |
+| **Filter Pills** | `.filter-pills` | Three toggle buttons: All, Available, Checked Out |
+| **Books Grid** | `#books-grid` | Container where book cards are dynamically injected by JS |
+| **Empty State** | `#empty-state` | Shown when no books match the search/filter |
+| **Loading State** | `#loading-state` | Spinner shown while fetching from the API |
+| **Issue Modal** | `#issue-modal` | Overlay dialog that prompts for Student ID when issuing a book |
+
+### Key HTML Elements
+
+| Element | ID | Purpose |
+|---------|-----|---------|
+| Search input | `#search-input` | User types search queries here |
+| Clear button | `#clear-btn` | Clears the search input (hidden when empty) |
+| Result count | `#result-count` | Shows "X books" or "X of Y books" |
+| Filter: All | `#filter-all` | Shows all books |
+| Filter: Available | `#filter-available` | Shows only books on shelf |
+| Filter: Checked Out | `#filter-checked-out` | Shows only checked-out books |
+| Student ID input | `#student-id-input` | Text field inside the issue modal |
+| Confirm Issue button | `#issue-confirm-btn` | Submits the issue request |
+
+### External Resources
+
+| Resource | Purpose |
+|----------|---------|
+| Google Fonts — **Inter** (weights 400–800) | Modern, clean typography |
+| `style.css` | All styling |
+| `script.js` | All client-side logic |
+
+---
+
+## 6. [`public/style.css`](file:///c:/Users/offic/OneDrive/Desktop/design%20thinking/public/style.css)
+
+**Purpose:** Complete styling for the app — dark glassmorphism theme with CSS custom properties.
+
+### Design System (CSS Variables)
+
+#### Color Palette
+
+| Variable | Value | Usage |
+|----------|-------|-------|
+| `--bg-body` | `#0c0f1a` | Page background (deep navy) |
+| `--bg-surface` | `#151929` | Cards, inputs, modals |
+| `--bg-card` | `rgba(22,28,50,0.72)` | Translucent card background |
+| `--clr-primary` | `#6c63ff` | Purple — primary accent, links, focus rings |
+| `--clr-accent` | `#00d4aa` | Teal — "Available" badges, issue buttons |
+| `--clr-danger` | `#ff4d6a` | Red — "Checked Out" badges |
+| `--clr-warning` | `#ffb547` | Amber — return buttons |
+
+#### Typography
+- Font: **Inter** via Google Fonts
+- Base size: 16px
+- Weights used: 400 (body), 500 (labels), 600 (buttons), 700 (titles), 800 (logo)
+
+### Key Visual Components
+
+| Component | Styles |
+|-----------|--------|
+| **Header** | Centered logo with gradient accent text, floating emoji animation |
+| **Search bar** | Sticky at top, `backdrop-filter: blur(20px)`, purple glow on focus |
+| **Filter pills** | Rounded pill buttons, active state with purple tint |
+| **Book cards** | Glassmorphic cards with hover lift (`translateY(-4px)`), staggered entrance animation |
+| **Availability badges** | Rounded pill with pulsing dot — green for available, red for checked out |
+| **Rack location box** | Gradient-bordered highlight box with 📍 icon |
+| **Buttons** | Gradient backgrounds with glow shadows and hover lift |
+| **Modal** | Centered overlay with blur backdrop, scale-in animation |
+| **Toasts** | Slide in from right, auto-dismiss with slide-out animation |
+
+### Animations
+
+| Animation | Used on | Effect |
+|-----------|---------|--------|
+| `float` | Logo emoji | Gentle up-down bobbing (4s loop) |
+| `cardIn` | Book cards | Fade up + slight scale (staggered by `--i` index) |
+| `pulse` | Badge dot | Opacity fade in/out (2s loop) |
+| `spin` | Loading spinner | 360° rotation |
+| `modalIn` | Issue modal | Scale up + fade |
+| `toastIn` / `toastOut` | Notifications | Slide from right / slide out |
+
+### Responsive Breakpoints
+
+| Breakpoint | Changes |
+|-----------|---------|
+| ≤ 768px | Single-column grid, smaller header, stacked search meta |
+| ≤ 380px | Smaller logo, full-width card buttons |
+
+---
+
+## 7. [`public/script.js`](file:///c:/Users/offic/OneDrive/Desktop/design%20thinking/public/script.js)
+
+**Purpose:** All client-side logic — search, filtering, book cards rendering, issue/return workflows.
+
+### Architecture
+
+The script runs inside an **IIFE** (Immediately Invoked Function Expression) with `'use strict'` to avoid polluting the global scope.
+
+### State Variables
+
+| Variable | Type | Purpose |
+|----------|------|---------|
+| `allBooks` | `Array` | All books from the last API fetch |
+| `activeFilter` | `String` | Current filter: `'all'`, `'available'`, or `'checked-out'` |
+| `debounceTimer` | `Number` | Timer ID for debounced search |
+| `issueBookId` | `Number` | Book ID currently being issued (set when modal opens) |
+
+### Functions
+
+#### Data Fetching
+
+| Function | Description |
+|----------|-------------|
+| `fetchBooks(query)` | Calls `GET /api/books?search=...`, stores result in `allBooks`, then calls `renderBooks()` |
+
+#### Rendering
+
+| Function | Description |
+|----------|-------------|
+| `renderBooks()` | Filters `allBooks` by `activeFilter`, updates result count, generates card HTML, attaches button listeners |
+| `cardHTML(book, index)` | Returns the HTML string for a single book card. Sets `--i` CSS variable for staggered animation |
+
+#### Issue Flow
+
+| Function | Description |
+|----------|-------------|
+| `openIssueModal(bookId, title)` | Opens the modal, focuses the Student ID input |
+| `closeIssueModal()` | Hides the modal, resets `issueBookId` |
+| `confirmIssue()` | Validates Student ID, calls `POST /api/books/issue`, shows toast, refreshes books |
+
+#### Return Flow
+
+| Function | Description |
+|----------|-------------|
+| `returnBook(bookId)` | Calls `POST /api/books/return`, shows toast, refreshes books |
+
+#### Utilities
+
+| Function | Description |
+|----------|-------------|
+| `toast(message, type)` | Creates a notification (`'success'`, `'error'`, or `'info'`). Auto-removes after 3.5 seconds |
+| `showLoading(show)` | Toggles the loading spinner visibility |
+| `esc(str)` | HTML-escapes a string to prevent XSS |
+
+### Event Listeners
+
+| Event | Element | Behavior |
+|-------|---------|----------|
+| `input` | Search input | Debounced (250ms) — calls `fetchBooks()` with current value |
+| `click` | Clear button | Clears search, re-fetches all books |
+| `click` | Filter pills | Sets `activeFilter`, re-renders without re-fetching |
+| `click` | Issue button (on card) | Opens issue modal for that book |
+| `click` | Return button (on card) | Immediately calls `returnBook()` |
+| `click` | Modal overlay/close/cancel | Closes modal |
+| `keydown` (Escape) | Document | Closes modal if open |
+| `keydown` (Enter) | Student ID input | Confirms issue |
+
+### Data Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant script.js
+    participant Express API
+    participant MySQL
+
+    User->>script.js: Types in search bar
+    script.js->>script.js: Debounce 250ms
+    script.js->>Express API: GET /api/books?search=...
+    Express API->>MySQL: SELECT * FROM books WHERE ...
+    MySQL-->>Express API: Rows
+    Express API-->>script.js: JSON { books: [...] }
+    script.js->>script.js: renderBooks() → inject card HTML
+
+    User->>script.js: Clicks "Issue Book"
+    script.js->>script.js: Open modal, prompt for Student ID
+    User->>script.js: Enters ID, clicks Confirm
+    script.js->>Express API: POST /api/books/issue { bookId, studentId }
+    Express API->>MySQL: BEGIN → FOR UPDATE → UPDATE → INSERT → COMMIT
+    MySQL-->>Express API: Success
+    Express API-->>script.js: { success: true, message: "..." }
+    script.js->>script.js: Toast notification + refresh grid
+
+    User->>script.js: Clicks "Return Book"
+    script.js->>Express API: POST /api/books/return { bookId }
+    Express API->>MySQL: BEGIN → FOR UPDATE → UPDATE → UPDATE → COMMIT
+    MySQL-->>Express API: Success
+    Express API-->>script.js: { success: true, message: "..." }
+    script.js->>script.js: Toast notification + refresh grid
+```
+
+---
+
+## Summary
+
+| Layer | File(s) | Technology |
+|-------|---------|------------|
+| **Database** | `db.js`, `seed.js` | MySQL with `mysql2/promise` connection pooling |
+| **Backend** | `server.js` | Node.js + Express (REST API with transactional safety) |
+| **Frontend** | `index.html`, `style.css`, `script.js` | Vanilla HTML5, CSS3, JavaScript (Fetch API) |
