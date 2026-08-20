@@ -1,15 +1,14 @@
 {
   "name": "library-book-finder",
-  "version": "1.0.0",
-  "description": "Library Book Finder & Management System",
-  "main": "server.js",
+  "version": "2.0.0",
+  "description": "Library Book Finder & Management System — Firebase Edition",
+  "main": "seed-firebase.js",
   "scripts": {
-    "start": "node server.js",
-    "seed": "node seed.js",
-    "dev": "node server.js"
+    "seed": "node seed-firebase.js",
+    "dev": "npx -y serve public -l 3000",
+    "start": "npx -y serve public -l 3000"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "mysql2": "^3.6.5"
+    "firebase-admin": "^12.0.0"
   }
 }

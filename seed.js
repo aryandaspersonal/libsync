@@ -91,7 +91,7 @@ async function seed() {
 
     // Thermodynamics / Basic Mechanical
     ['Engineering Thermodynamics', 'P.K. Nag', '978-9352606418', 'Floor 4, Row B, Rack 1', 0],
-    ['Basic Mechanical Engineering', 'Pravin Kumar', '978-8131798751', 'Floor 4, Row B, Rack 2', 1],
+    ['Basic Mechanical Engineering', 'Pravin Kumar', '978-8131798751', 'Floor 4, Row B, Rack 2', 1]
   ];
 
   const sql = `INSERT INTO books (title, author, isbn, rack_location, is_available) VALUES ?`;
@@ -102,9 +102,9 @@ async function seed() {
     INSERT INTO transactions (book_id, student_id, issue_date)
     VALUES
       (4,  'STU-2024-001', '2026-08-15 10:00:00'),
-      (8,  'STU-2024-003', '2026-08-18 14:30:00'),
-      (13, 'STU-2024-007', '2026-08-19 09:15:00'),
-      (19, 'STU-2024-012', '2026-08-20 11:00:00');
+      (7,  'STU-2024-003', '2026-08-18 14:30:00'),
+      (12, 'STU-2024-007', '2026-08-19 09:15:00'),
+      (18, 'STU-2024-012', '2026-08-20 11:00:00');
   `);
 
   console.log('✅  Database seeded successfully — 20 books + 4 active transactions');

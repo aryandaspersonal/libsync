@@ -1,47 +1,224 @@
 /* ═══════════════════════════════════════════════════════════════════
-   LibraFind — script.js
-   Client-side logic: live search, filtering, issue/return flow
+   LibSync — script.js (Firebase Edition)
+   Client-side logic: Firebase Auth, Firestore queries, live search,
+   filtering, issue/return flow
    ═══════════════════════════════════════════════════════════════════ */
 
 (() => {
   'use strict';
 
-  /* ── DOM refs ────────────────────────────────────────────────────── */
-  const searchInput   = document.getElementById('search-input');
-  const clearBtn      = document.getElementById('clear-btn');
-  const booksGrid     = document.getElementById('books-grid');
-  const emptyState    = document.getElementById('empty-state');
-  const loadingState  = document.getElementById('loading-state');
-  const resultCount   = document.getElementById('result-count');
-  const filterPills   = document.querySelectorAll('.pill[data-filter]');
-  const issueModal    = document.getElementById('issue-modal');
-  const issueClose    = document.getElementById('issue-modal-close');
-  const issueCancelBtn = document.getElementById('issue-cancel-btn');
+  /* ── DOM refs — Auth ──────────────────────────────────────────────── */
+  const authScreen      = document.getElementById('auth-screen');
+  const appContainer    = document.getElementById('app-container');
+  const loginForm       = document.getElementById('login-form');
+  const signupForm      = document.getElementById('signup-form');
+  const loginEmailIn    = document.getElementById('login-email');
+  const loginPassIn     = document.getElementById('login-password');
+  const signupEmailIn   = document.getElementById('signup-email');
+  const signupPassIn    = document.getElementById('signup-password');
+  const signupConfirmIn = document.getElementById('signup-confirm');
+  const authError       = document.getElementById('auth-error');
+  const tabLogin        = document.getElementById('tab-login');
+  const tabSignup       = document.getElementById('tab-signup');
+  const guestBtn        = document.getElementById('guest-btn');
+  const logoutBtn       = document.getElementById('logout-btn');
+  const loginPromptBtn  = document.getElementById('login-prompt-btn');
+  const userBar         = document.getElementById('user-bar');
+  const guestBar        = document.getElementById('guest-bar');
+  const userEmailEl     = document.getElementById('user-email');
+
+  /* ── DOM refs — App ──────────────────────────────────────────────── */
+  const searchInput     = document.getElementById('search-input');
+  const clearBtn        = document.getElementById('clear-btn');
+  const booksGrid       = document.getElementById('books-grid');
+  const emptyState      = document.getElementById('empty-state');
+  const loadingState    = document.getElementById('loading-state');
+  const resultCount     = document.getElementById('result-count');
+  const filterPills     = document.querySelectorAll('.pill[data-filter]');
+  const issueModal      = document.getElementById('issue-modal');
+  const issueClose      = document.getElementById('issue-modal-close');
+  const issueCancelBtn  = document.getElementById('issue-cancel-btn');
   const issueConfirmBtn = document.getElementById('issue-confirm-btn');
-  const issueBookTitle = document.getElementById('issue-modal-book');
-  const studentIdInput = document.getElementById('student-id-input');
-  const toastContainer = document.getElementById('toast-container');
+  const issueBookTitle  = document.getElementById('issue-modal-book');
+  const studentIdInput  = document.getElementById('student-id-input');
+  const toastContainer  = document.getElementById('toast-container');
 
   /* ── State ───────────────────────────────────────────────────────── */
   let allBooks = [];
-  let activeFilter = 'all';      // 'all' | 'available' | 'checked-out'
+  let activeFilter = 'all';
   let debounceTimer = null;
   let issueBookId = null;
+  let currentUser = null;
+  let isGuest = false;
 
-  /* ── Init ────────────────────────────────────────────────────────── */
-  fetchBooks();
+  /* ═══════════════════════════════════════════════════════════════════
+     AUTH LOGIC
+     ═══════════════════════════════════════════════════════════════════ */
+
+  /* ── Tab switching ──────────────────────────────────────────────── */
+  tabLogin.addEventListener('click', () => {
+    tabLogin.classList.add('active');
+    tabSignup.classList.remove('active');
+    loginForm.classList.remove('hidden');
+    signupForm.classList.add('hidden');
+    hideAuthError();
+  });
+
+  tabSignup.addEventListener('click', () => {
+    tabSignup.classList.add('active');
+    tabLogin.classList.remove('active');
+    signupForm.classList.remove('hidden');
+    loginForm.classList.add('hidden');
+    hideAuthError();
+  });
+
+  /* ── Login ──────────────────────────────────────────────────────── */
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideAuthError();
+    const email = loginEmailIn.value.trim();
+    const pass  = loginPassIn.value;
+
+    if (!email || !pass) return showAuthError('Please fill in all fields.');
+
+    setAuthLoading(loginForm, true);
+    try {
+      await auth.signInWithEmailAndPassword(email, pass);
+      // onAuthStateChanged will handle the rest
+    } catch (err) {
+      showAuthError(friendlyAuthError(err));
+    } finally {
+      setAuthLoading(loginForm, false);
+    }
+  });
+
+  /* ── Sign Up ────────────────────────────────────────────────────── */
+  signupForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideAuthError();
+    const email   = signupEmailIn.value.trim();
+    const pass    = signupPassIn.value;
+    const confirm = signupConfirmIn.value;
+
+    if (!email || !pass || !confirm) return showAuthError('Please fill in all fields.');
+    if (pass !== confirm) return showAuthError('Passwords do not match.');
+    if (pass.length < 6) return showAuthError('Password must be at least 6 characters.');
+
+    setAuthLoading(signupForm, true);
+    try {
+      await auth.createUserWithEmailAndPassword(email, pass);
+      // onAuthStateChanged will handle the rest
+    } catch (err) {
+      showAuthError(friendlyAuthError(err));
+    } finally {
+      setAuthLoading(signupForm, false);
+    }
+  });
+
+  /* ── Guest mode ─────────────────────────────────────────────────── */
+  guestBtn.addEventListener('click', () => {
+    isGuest = true;
+    currentUser = null;
+    enterApp();
+  });
+
+  /* ── Login prompt (from guest mode) ─────────────────────────────── */
+  loginPromptBtn.addEventListener('click', () => {
+    isGuest = false;
+    appContainer.classList.add('hidden');
+    authScreen.classList.remove('hidden');
+  });
+
+  /* ── Logout ─────────────────────────────────────────────────────── */
+  logoutBtn.addEventListener('click', async () => {
+    await auth.signOut();
+    isGuest = false;
+    currentUser = null;
+    appContainer.classList.add('hidden');
+    authScreen.classList.remove('hidden');
+  });
+
+  /* ── Firebase Auth State Listener ───────────────────────────────── */
+  auth.onAuthStateChanged((user) => {
+    if (user) {
+      currentUser = user;
+      isGuest = false;
+      enterApp();
+    } else if (!isGuest) {
+      currentUser = null;
+      // Show auth screen
+      appContainer.classList.add('hidden');
+      authScreen.classList.remove('hidden');
+    }
+  });
+
+  /* ── Enter the app ──────────────────────────────────────────────── */
+  function enterApp() {
+    authScreen.classList.add('hidden');
+    appContainer.classList.remove('hidden');
+
+    if (currentUser) {
+      userBar.classList.remove('hidden');
+      guestBar.classList.add('hidden');
+      userEmailEl.textContent = currentUser.email;
+    } else {
+      userBar.classList.add('hidden');
+      guestBar.classList.remove('hidden');
+    }
+
+    fetchBooks();
+  }
+
+  /* ── Auth helpers ───────────────────────────────────────────────── */
+  function showAuthError(msg) {
+    authError.textContent = msg;
+    authError.classList.remove('hidden');
+  }
+
+  function hideAuthError() {
+    authError.classList.add('hidden');
+    authError.textContent = '';
+  }
+
+  function setAuthLoading(form, loading) {
+    const btn = form.querySelector('.btn-auth');
+    const text = btn.querySelector('.btn-text');
+    const spinner = btn.querySelector('.btn-spinner');
+    btn.disabled = loading;
+    text.style.opacity = loading ? '0' : '1';
+    spinner.classList.toggle('hidden', !loading);
+  }
+
+  function friendlyAuthError(err) {
+    const map = {
+      'auth/user-not-found':         'No account found with that email.',
+      'auth/wrong-password':         'Incorrect password.',
+      'auth/invalid-credential':     'Invalid email or password.',
+      'auth/email-already-in-use':   'An account with that email already exists.',
+      'auth/weak-password':          'Password must be at least 6 characters.',
+      'auth/invalid-email':          'Please enter a valid email address.',
+      'auth/too-many-requests':      'Too many attempts. Please try again later.',
+      'auth/network-request-failed': 'Network error. Check your connection.',
+    };
+    return map[err.code] || `Error: ${err.message}`;
+  }
+
+
+  /* ═══════════════════════════════════════════════════════════════════
+     LIBRARY APP LOGIC
+     ═══════════════════════════════════════════════════════════════════ */
 
   /* ── Event Listeners ─────────────────────────────────────────────── */
   searchInput.addEventListener('input', () => {
     clearBtn.classList.toggle('hidden', !searchInput.value);
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => fetchBooks(searchInput.value.trim()), 250);
+    debounceTimer = setTimeout(() => renderBooks(), 250);
   });
 
   clearBtn.addEventListener('click', () => {
     searchInput.value = '';
     clearBtn.classList.add('hidden');
-    fetchBooks();
+    renderBooks();
     searchInput.focus();
   });
 
@@ -74,24 +251,32 @@
     if (e.key === 'Enter') confirmIssue();
   });
 
-  /* ── Fetch books from API ────────────────────────────────────────── */
-  async function fetchBooks(query = '') {
+  /* ── Fetch books from Firestore ──────────────────────────────────── */
+  async function fetchBooks() {
     try {
       showLoading(true);
-      const url = query
-        ? `/api/books?search=${encodeURIComponent(query)}`
-        : '/api/books';
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.success) {
-        allBooks = data.books;
-        renderBooks();
-      } else {
-        toast('Failed to load books', 'error');
-      }
+
+      const snapshot = await db.collection('books').get();
+
+      let booksList = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      // Sort client-side to avoid requiring a Firestore composite index
+      booksList.sort((a, b) => {
+        if (a.rack_location < b.rack_location) return -1;
+        if (a.rack_location > b.rack_location) return 1;
+        if (a.title < b.title) return -1;
+        if (a.title > b.title) return 1;
+        return 0;
+      });
+
+      allBooks = booksList;
+      renderBooks();
     } catch (err) {
-      console.error(err);
-      toast('Unable to connect to the server', 'error');
+      console.error('Firestore fetch error:', err);
+      toast('Failed to load books from Firestore', 'error');
     } finally {
       showLoading(false);
     }
@@ -99,12 +284,23 @@
 
   /* ── Render book cards ───────────────────────────────────────────── */
   function renderBooks() {
+    const query = searchInput.value.trim().toLowerCase();
     let filtered = allBooks;
 
+    // Client-side search (Firestore doesn't support LIKE queries)
+    if (query) {
+      filtered = filtered.filter((b) =>
+        b.title.toLowerCase().includes(query) ||
+        b.author.toLowerCase().includes(query) ||
+        b.rack_location.toLowerCase().includes(query)
+      );
+    }
+
+    // Availability filter
     if (activeFilter === 'available') {
-      filtered = allBooks.filter((b) => b.is_available);
+      filtered = filtered.filter((b) => b.is_available);
     } else if (activeFilter === 'checked-out') {
-      filtered = allBooks.filter((b) => !b.is_available);
+      filtered = filtered.filter((b) => !b.is_available);
     }
 
     // Update count
@@ -134,9 +330,17 @@
     const available = Boolean(book.is_available);
     const badgeClass = available ? 'badge-available' : 'badge-checked-out';
     const badgeText  = available ? 'Present on Shelf' : 'Checked Out';
+    const isAuth = !!currentUser;
 
-    // Parse rack location into segments for visual flair
-    const locSegments = book.rack_location.split(',').map((s) => s.trim());
+    // Only show action buttons if user is authenticated (not guest)
+    let actionButtons = '';
+    if (isAuth && available) {
+      actionButtons = `<button class="btn btn-issue" data-action="issue" data-id="${book.id}" data-title="${esc(book.title)}" id="issue-btn-${book.id}">📤 Issue Book</button>`;
+    } else if (isAuth && !available) {
+      actionButtons = `<button class="btn btn-return" data-action="return" data-id="${book.id}" data-title="${esc(book.title)}" id="return-btn-${book.id}">📥 Return Book</button>`;
+    } else if (!isAuth) {
+      actionButtons = `<span class="guest-hint">🔒 Log in to issue/return</span>`;
+    }
 
     return `
       <article class="book-card" style="--i:${index}" id="book-card-${book.id}">
@@ -161,10 +365,7 @@
         </div>
 
         <div class="card-actions">
-          ${available
-            ? `<button class="btn btn-issue" data-action="issue" data-id="${book.id}" data-title="${esc(book.title)}" id="issue-btn-${book.id}">📤 Issue Book</button>`
-            : `<button class="btn btn-return" data-action="return" data-id="${book.id}" data-title="${esc(book.title)}" id="return-btn-${book.id}">📥 Return Book</button>`
-          }
+          ${actionButtons}
         </div>
       </article>
     `;
@@ -174,7 +375,7 @@
   function handleCardAction(e) {
     const btn = e.currentTarget;
     const action = btn.dataset.action;
-    const bookId = Number(btn.dataset.id);
+    const bookId = btn.dataset.id;
     const title  = btn.dataset.title;
 
     if (action === 'issue') {
@@ -206,26 +407,48 @@
       return;
     }
 
+    if (!currentUser) {
+      toast('You must be logged in to issue books', 'error');
+      return;
+    }
+
     issueConfirmBtn.disabled = true;
     issueConfirmBtn.textContent = 'Processing…';
 
     try {
-      const res = await fetch('/api/books/issue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookId: issueBookId, studentId }),
+      const bookRef = db.collection('books').doc(issueBookId);
+
+      // Run as a Firestore transaction for atomicity
+      await db.runTransaction(async (transaction) => {
+        const bookDoc = await transaction.get(bookRef);
+
+        if (!bookDoc.exists) {
+          throw new Error('Book not found');
+        }
+        if (!bookDoc.data().is_available) {
+          throw new Error('Book is already checked out');
+        }
+
+        // Mark book as unavailable
+        transaction.update(bookRef, { is_available: false });
+
+        // Create transaction record
+        const txnRef = db.collection('transactions').doc();
+        transaction.set(txnRef, {
+          book_id:     issueBookId,
+          student_id:  studentId,
+          issue_date:  firebase.firestore.FieldValue.serverTimestamp(),
+          return_date: null,
+        });
       });
-      const data = await res.json();
-      if (data.success) {
-        toast(data.message, 'success');
-        closeIssueModal();
-        await fetchBooks(searchInput.value.trim());
-      } else {
-        toast(data.message || 'Issue failed', 'error');
-      }
+
+      const book = allBooks.find((b) => b.id === issueBookId);
+      toast(`"${book?.title || 'Book'}" issued to ${studentId}`, 'success');
+      closeIssueModal();
+      await fetchBooks();
     } catch (err) {
-      console.error(err);
-      toast('Network error — could not issue book', 'error');
+      console.error('Issue error:', err);
+      toast(err.message || 'Failed to issue book', 'error');
     } finally {
       issueConfirmBtn.disabled = false;
       issueConfirmBtn.textContent = 'Confirm Issue';
@@ -234,22 +457,49 @@
 
   /* ── Return flow ─────────────────────────────────────────────────── */
   async function returnBook(bookId) {
+    if (!currentUser) {
+      toast('You must be logged in to return books', 'error');
+      return;
+    }
+
     try {
-      const res = await fetch('/api/books/return', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookId }),
+      const bookRef = db.collection('books').doc(bookId);
+
+      await db.runTransaction(async (transaction) => {
+        const bookDoc = await transaction.get(bookRef);
+
+        if (!bookDoc.exists) {
+          throw new Error('Book not found');
+        }
+        if (bookDoc.data().is_available) {
+          throw new Error('Book is already on the shelf');
+        }
+
+        // Mark book as available
+        transaction.update(bookRef, { is_available: true });
       });
-      const data = await res.json();
-      if (data.success) {
-        toast(data.message, 'success');
-        await fetchBooks(searchInput.value.trim());
-      } else {
-        toast(data.message || 'Return failed', 'error');
+
+      // Update the open transaction record (outside the Firestore transaction
+      // since we need a query which isn't supported inside transactions easily)
+      const txnSnapshot = await db.collection('transactions')
+        .where('book_id', '==', bookId)
+        .where('return_date', '==', null)
+        .orderBy('issue_date', 'desc')
+        .limit(1)
+        .get();
+
+      if (!txnSnapshot.empty) {
+        await txnSnapshot.docs[0].ref.update({
+          return_date: firebase.firestore.FieldValue.serverTimestamp(),
+        });
       }
+
+      const book = allBooks.find((b) => b.id === bookId);
+      toast(`"${book?.title || 'Book'}" returned to ${book?.rack_location || 'shelf'}`, 'success');
+      await fetchBooks();
     } catch (err) {
-      console.error(err);
-      toast('Network error — could not return book', 'error');
+      console.error('Return error:', err);
+      toast(err.message || 'Failed to return book', 'error');
     }
   }
 

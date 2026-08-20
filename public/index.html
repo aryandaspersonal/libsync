@@ -15,70 +15,153 @@
   <!-- ─── Toast container ─────────────────────────────────────────── -->
   <div id="toast-container" aria-live="polite"></div>
 
-  <!-- ─── Header ──────────────────────────────────────────────────── -->
-  <header id="app-header">
-    <div class="header-inner">
-      <div class="logo" id="logo">
+  <!-- ─── Auth Screen (Login / Sign Up) ───────────────────────────── -->
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-logo">
         <span class="logo-icon">📚</span>
         <h1>Lib<span class="accent">Sync</span></h1>
       </div>
-      <p class="tagline">Locate any book instantly — rack, row &amp; shelf</p>
-    </div>
-  </header>
+      <p class="auth-subtitle">Library Management System</p>
 
-  <!-- ─── Search Section ──────────────────────────────────────────── -->
-  <section id="search-section">
-    <div class="search-wrapper">
-      <div class="search-box" id="search-box">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input
-          type="text"
-          id="search-input"
-          placeholder="Search by title, author, or rack location…"
-          autocomplete="off"
-        />
-        <button id="clear-btn" class="clear-btn hidden" title="Clear search" aria-label="Clear search">&times;</button>
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login" id="tab-login">Log In</button>
+        <button class="auth-tab" data-tab="signup" id="tab-signup">Sign Up</button>
       </div>
-      <div class="search-meta">
-        <span id="result-count" class="result-count"></span>
-        <div class="filter-pills">
-          <button class="pill active" data-filter="all" id="filter-all">All</button>
-          <button class="pill" data-filter="available" id="filter-available">Available</button>
-          <button class="pill" data-filter="checked-out" id="filter-checked-out">Checked Out</button>
+
+      <!-- Login Form -->
+      <form id="login-form" class="auth-form" autocomplete="off">
+        <div class="form-group">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" class="auth-input" placeholder="librarian@university.edu" required />
         </div>
-      </div>
-    </div>
-  </section>
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" class="auth-input" placeholder="••••••••" required />
+        </div>
+        <button type="submit" class="btn btn-primary btn-auth" id="login-btn">
+          <span class="btn-text">Log In</span>
+          <span class="btn-spinner hidden"></span>
+        </button>
+      </form>
 
-  <!-- ─── Books Grid ──────────────────────────────────────────────── -->
-  <main id="main-content">
-    <div id="books-grid" class="books-grid"></div>
-    <div id="empty-state" class="empty-state hidden">
-      <span class="empty-icon">🔍</span>
-      <h2>No books found</h2>
-      <p>Try a different search term or clear your filters.</p>
-    </div>
-    <div id="loading-state" class="loading-state">
-      <div class="spinner"></div>
-      <p>Loading library catalogue…</p>
-    </div>
-  </main>
+      <!-- Sign Up Form -->
+      <form id="signup-form" class="auth-form hidden" autocomplete="off">
+        <div class="form-group">
+          <label for="signup-email">Email</label>
+          <input type="email" id="signup-email" class="auth-input" placeholder="librarian@university.edu" required />
+        </div>
+        <div class="form-group">
+          <label for="signup-password">Password</label>
+          <input type="password" id="signup-password" class="auth-input" placeholder="Min 6 characters" required minlength="6" />
+        </div>
+        <div class="form-group">
+          <label for="signup-confirm">Confirm Password</label>
+          <input type="password" id="signup-confirm" class="auth-input" placeholder="••••••••" required minlength="6" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-auth" id="signup-btn">
+          <span class="btn-text">Create Account</span>
+          <span class="btn-spinner hidden"></span>
+        </button>
+      </form>
 
-  <!-- ─── Issue Modal ─────────────────────────────────────────────── -->
-  <div id="issue-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="issue-modal-title">
-    <div class="modal">
-      <button class="modal-close" id="issue-modal-close" aria-label="Close">&times;</button>
-      <h2 id="issue-modal-title">Issue Book</h2>
-      <p id="issue-modal-book" class="modal-book-title"></p>
-      <label for="student-id-input" class="modal-label">Student ID</label>
-      <input type="text" id="student-id-input" class="modal-input" placeholder="e.g. STU-2024-042" autocomplete="off" />
-      <div class="modal-actions">
-        <button id="issue-cancel-btn" class="btn btn-ghost">Cancel</button>
-        <button id="issue-confirm-btn" class="btn btn-primary">Confirm Issue</button>
+      <p class="auth-error hidden" id="auth-error"></p>
+
+      <div class="auth-divider">
+        <span>or continue as guest</span>
       </div>
+      <button class="btn btn-ghost btn-auth" id="guest-btn">Browse Catalog (Read Only)</button>
     </div>
   </div>
 
+  <!-- ─── Main App (hidden until auth / guest) ────────────────────── -->
+  <div id="app-container" class="hidden">
+
+    <!-- ─── Header ──────────────────────────────────────────────────── -->
+    <header id="app-header">
+      <div class="header-inner">
+        <div class="header-top">
+          <div class="logo" id="logo">
+            <span class="logo-icon">📚</span>
+            <h1>Lib<span class="accent">Sync</span></h1>
+          </div>
+          <div class="user-bar" id="user-bar">
+            <span class="user-email" id="user-email"></span>
+            <button class="btn btn-ghost btn-sm" id="logout-btn">Logout</button>
+          </div>
+          <div class="guest-bar hidden" id="guest-bar">
+            <span class="guest-label">👤 Guest</span>
+            <button class="btn btn-primary btn-sm" id="login-prompt-btn">Log In</button>
+          </div>
+        </div>
+        <p class="tagline">Locate any book instantly — rack, row &amp; shelf</p>
+      </div>
+    </header>
+
+    <!-- ─── Search Section ──────────────────────────────────────────── -->
+    <section id="search-section">
+      <div class="search-wrapper">
+        <div class="search-box" id="search-box">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input
+            type="text"
+            id="search-input"
+            placeholder="Search by title, author, or rack location…"
+            autocomplete="off"
+          />
+          <button id="clear-btn" class="clear-btn hidden" title="Clear search" aria-label="Clear search">&times;</button>
+        </div>
+        <div class="search-meta">
+          <span id="result-count" class="result-count"></span>
+          <div class="filter-pills">
+            <button class="pill active" data-filter="all" id="filter-all">All</button>
+            <button class="pill" data-filter="available" id="filter-available">Available</button>
+            <button class="pill" data-filter="checked-out" id="filter-checked-out">Checked Out</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Books Grid ──────────────────────────────────────────────── -->
+    <main id="main-content">
+      <div id="books-grid" class="books-grid"></div>
+      <div id="empty-state" class="empty-state hidden">
+        <span class="empty-icon">🔍</span>
+        <h2>No books found</h2>
+        <p>Try a different search term or clear your filters.</p>
+      </div>
+      <div id="loading-state" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading library catalogue…</p>
+      </div>
+    </main>
+
+    <!-- ─── Issue Modal ─────────────────────────────────────────────── -->
+    <div id="issue-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="issue-modal-title">
+      <div class="modal">
+        <button class="modal-close" id="issue-modal-close" aria-label="Close">&times;</button>
+        <h2 id="issue-modal-title">Issue Book</h2>
+        <p id="issue-modal-book" class="modal-book-title"></p>
+        <label for="student-id-input" class="modal-label">Student ID</label>
+        <input type="text" id="student-id-input" class="modal-input" placeholder="e.g. STU-2024-042" autocomplete="off" />
+        <div class="modal-actions">
+          <button id="issue-cancel-btn" class="btn btn-ghost">Cancel</button>
+          <button id="issue-confirm-btn" class="btn btn-primary">Confirm Issue</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- #app-container -->
+
+  <!-- ─── Firebase SDK (CDN — compat mode for simplicity) ─────────── -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <!-- Firebase config (user fills in their project details) -->
+  <script src="firebase-config.js"></script>
+
+  <!-- App logic -->
   <script src="script.js"></script>
 </body>
 </html>
