@@ -5,10 +5,10 @@
   "main": "seed-firebase.js",
   "scripts": {
     "seed": "node seed-firebase.js",
-    "dev": "npx -y serve public -l 3000",
-    "start": "npx -y serve public -l 3000"
+    "dev": "npx -y serve public -l 3000 -s",
+    "start": "npx -y serve public -l 3000 -s"
   },
   "dependencies": {
-    "firebase-admin": "^12.0.0"
+    "firebase-admin": "^12.7.0"
   }
 }

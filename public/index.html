@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
 
@@ -71,6 +71,10 @@
         <span>or continue as guest</span>
       </div>
       <button class="btn btn-ghost btn-auth" id="guest-btn">Browse Catalog (Read Only)</button>
+      
+      <div style="margin-top: 1.5rem; text-align: center;">
+        <a href="/admin/login" style="color: var(--clr-text-secondary); font-size: 0.85rem; text-decoration: underline;">Librarian / Admin Login</a>
+      </div>
     </div>
   </div>
 
@@ -93,6 +97,7 @@
             <span class="guest-label">👤 Guest</span>
             <button class="btn btn-primary btn-sm" id="login-prompt-btn">Log In</button>
           </div>
+          <a href="/admin/login" class="btn btn-ghost btn-sm" style="margin-left: 0.5rem; text-decoration: none;" title="Admin Portal">⚙️ Admin</a>
         </div>
         <p class="tagline">Locate any book instantly — rack, row &amp; shelf</p>
       </div>
@@ -153,15 +158,243 @@
 
   </div><!-- #app-container -->
 
+  <!-- ─── Admin Login Screen ──────────────────────────────────────── -->
+  <div id="admin-login-screen" class="auth-screen hidden">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <span class="logo-icon">⚙️</span>
+        <h1>Admin<span class="accent">Portal</span></h1>
+      </div>
+      <p class="auth-subtitle">Library Management System</p>
+
+      <form id="admin-login-form" class="auth-form" autocomplete="off">
+        <div class="form-group">
+          <label for="admin-login-email">Admin Email</label>
+          <input type="email" id="admin-login-email" class="auth-input" placeholder="admin@library.com" required />
+        </div>
+        <div class="form-group">
+          <label for="admin-login-password">Password</label>
+          <input type="password" id="admin-login-password" class="auth-input" placeholder="••••••••" required />
+        </div>
+        <button type="submit" class="btn btn-primary btn-auth" id="admin-login-btn">
+          <span class="btn-text">Log In as Admin</span>
+          <span class="btn-spinner hidden"></span>
+        </button>
+      </form>
+      <p class="auth-error hidden" id="admin-auth-error"></p>
+      
+      <div class="auth-divider">
+        <span>or</span>
+      </div>
+      <button class="btn btn-ghost btn-auth" id="back-to-user-btn">Back to User Portal</button>
+    </div>
+  </div>
+
+  <!-- ─── Admin Portal Container ──────────────────────────────────── -->
+  <div id="admin-portal-container" class="admin-portal hidden">
+    
+    <!-- Admin Sidebar -->
+    <aside class="admin-sidebar">
+      <div class="admin-sidebar-header">
+        <span class="logo-icon">⚙️</span>
+        <h2>Lib<span class="accent">Admin</span></h2>
+      </div>
+      <nav class="admin-nav">
+        <button class="admin-nav-link active" data-admin-tab="dashboard">📊 Dashboard</button>
+        <button class="admin-nav-link" data-admin-tab="books">📚 Manage Books</button>
+        <button class="admin-nav-link" disabled title="Coming Soon">👥 Users</button>
+        <button class="admin-nav-link" disabled title="Coming Soon">🔖 Reservations</button>
+        <button class="admin-nav-link" disabled title="Coming Soon">📋 Borrowing Records</button>
+        <button class="admin-nav-link" disabled title="Coming Soon">⚙️ Settings</button>
+      </nav>
+      <div class="admin-sidebar-footer">
+        <button class="btn btn-ghost btn-sm" id="admin-logout-btn">🚪 Logout</button>
+      </div>
+    </aside>
+
+    <!-- Admin Main Content -->
+    <main class="admin-main">
+      
+      <!-- Dashboard View -->
+      <section id="admin-view-dashboard" class="admin-view">
+        <header class="admin-header">
+          <h2>Dashboard Overview</h2>
+        </header>
+        <div class="admin-stats-grid">
+          <div class="stat-card">
+            <h3>Total Books</h3>
+            <p id="stat-total-books" class="stat-value">0</p>
+          </div>
+          <div class="stat-card stat-success">
+            <h3>Available Books</h3>
+            <p id="stat-available-books" class="stat-value">0</p>
+          </div>
+          <div class="stat-card stat-danger">
+            <h3>Borrowed Books</h3>
+            <p id="stat-borrowed-books" class="stat-value">0</p>
+          </div>
+          <div class="stat-card">
+            <h3>Total Copies</h3>
+            <p id="stat-total-copies" class="stat-value">0</p>
+          </div>
+        </div>
+
+        <div class="admin-recent-activity">
+          <h3>Recent Activity</h3>
+          <ul id="admin-recent-list" class="recent-list">
+            <li>Loading...</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Manage Books View -->
+      <section id="admin-view-books" class="admin-view hidden">
+        <header class="admin-header">
+          <h2>Manage Books</h2>
+          <button class="btn btn-primary" id="admin-add-book-btn">+ Add New Book</button>
+        </header>
+        
+        <div class="admin-toolbar">
+          <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="admin-search-input" placeholder="Search books..." autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="admin-table-container">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Book</th>
+                <th>Author</th>
+                <th>Category</th>
+                <th>ISBN</th>
+                <th>Quantity</th>
+                <th>Location</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="admin-books-tbody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+          <div id="admin-books-empty" class="empty-state hidden">
+            <p>No books found.</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ─── Admin Book Modal (Add / Edit) ─────────────────────────── -->
+    <div id="admin-book-modal" class="modal-overlay hidden" role="dialog">
+      <div class="modal modal-lg">
+        <button class="modal-close" id="admin-book-modal-close" aria-label="Close">&times;</button>
+        <h2 id="admin-book-modal-title">Add New Book</h2>
+        <form id="admin-book-form" autocomplete="off">
+          <input type="hidden" id="admin-book-id" />
+          
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="admin-book-title">Title *</label>
+              <input type="text" id="admin-book-title" class="modal-input" required />
+            </div>
+            <div class="form-group flex-1">
+              <label for="admin-book-author">Author *</label>
+              <input type="text" id="admin-book-author" class="modal-input" required />
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="admin-book-isbn">ISBN *</label>
+              <input type="text" id="admin-book-isbn" class="modal-input" required />
+            </div>
+            <div class="form-group flex-1">
+              <label for="admin-book-category">Category</label>
+              <input type="text" id="admin-book-category" class="modal-input" placeholder="e.g. Mathematics" />
+            </div>
+            <div class="form-group flex-1">
+              <label for="admin-book-publisher">Publisher</label>
+              <input type="text" id="admin-book-publisher" class="modal-input" />
+            </div>
+            <div class="form-group flex-1">
+              <label for="admin-book-year">Pub. Year</label>
+              <input type="number" id="admin-book-year" class="modal-input" />
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="admin-book-cover">Cover Image URL</label>
+              <input type="url" id="admin-book-cover" class="modal-input" placeholder="https://..." />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="admin-book-desc">Description</label>
+            <textarea id="admin-book-desc" class="modal-input" rows="2"></textarea>
+          </div>
+
+          <h3 class="modal-section-title">Inventory & Location</h3>
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="admin-book-qty">Total Quantity *</label>
+              <input type="number" id="admin-book-qty" class="modal-input" required min="1" value="1" />
+            </div>
+            <div class="form-group flex-1">
+              <label for="admin-book-avail">Available Quantity *</label>
+              <input type="number" id="admin-book-avail" class="modal-input" required min="0" value="1" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="admin-book-floor">Floor *</label>
+              <input type="text" id="admin-book-floor" class="modal-input" placeholder="e.g. Floor 1" required />
+            </div>
+            <div class="form-group flex-1">
+              <label for="admin-book-row">Row *</label>
+              <input type="text" id="admin-book-row" class="modal-input" placeholder="e.g. Row A" required />
+            </div>
+            <div class="form-group flex-1">
+              <label for="admin-book-rack">Rack *</label>
+              <input type="text" id="admin-book-rack" class="modal-input" placeholder="e.g. Rack 3" required />
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" id="admin-book-cancel-btn" class="btn btn-ghost">Cancel</button>
+            <button type="submit" id="admin-book-save-btn" class="btn btn-primary">Save Book</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ─── Admin Delete Confirm Modal ──────────────────────────────── -->
+    <div id="admin-delete-modal" class="modal-overlay hidden" role="dialog">
+      <div class="modal">
+        <h2 class="text-danger">Delete Book</h2>
+        <p>Are you sure you want to delete <strong id="admin-delete-book-title"></strong>?</p>
+        <p class="text-muted">This action cannot be undone.</p>
+        <div class="modal-actions">
+          <button id="admin-delete-cancel-btn" class="btn btn-ghost">Cancel</button>
+          <button id="admin-delete-confirm-btn" class="btn btn-danger">Yes, Delete</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- #admin-portal-container -->
+
   <!-- ─── Firebase SDK (CDN — compat mode for simplicity) ─────────── -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
   <!-- Firebase config (user fills in their project details) -->
-  <script src="firebase-config.js"></script>
+  <script src="/firebase-config.js"></script>
 
   <!-- App logic -->
-  <script src="script.js"></script>
+  <script src="/script.js"></script>
 </body>
 </html>

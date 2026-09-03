@@ -73,6 +73,46 @@ async function seed() {
     // Thermodynamics / Basic Mechanical
     { title: 'Engineering Thermodynamics',             author: 'P.K. Nag',              isbn: '978-9352606418', rack_location: 'Floor 4, Row B, Rack 1', is_available: false },
     { title: 'Basic Mechanical Engineering',           author: 'Pravin Kumar',          isbn: '978-8131798751', rack_location: 'Floor 4, Row B, Rack 2', is_available: true  },
+
+    // Mathematics - Additional
+    { title: 'Engineering Mathematics',                 author: 'B.V. Ramana',           isbn: '978-0070682160', rack_location: 'Floor 5, Row A, Rack 1', is_available: true  },
+    { title: 'Higher Engineering Mathematics',         author: 'H.K. Dass',             isbn: '978-8177001267', rack_location: 'Floor 5, Row A, Rack 2', is_available: true  },
+
+    // Physics - Additional
+    { title: 'Engineering Physics',                    author: 'S.O. Pillai',            isbn: '978-8120338265', rack_location: 'Floor 5, Row B, Rack 1', is_available: false },
+    { title: 'Modern Physics',                         author: 'R. Murugeshan',          isbn: '978-8125016816', rack_location: 'Floor 5, Row B, Rack 2', is_available: true  },
+
+    // Chemistry - Additional
+    { title: 'Engineering Chemistry',                  author: 'S.S. Dara',              isbn: '978-8121905412', rack_location: 'Floor 5, Row C, Rack 1', is_available: true  },
+    { title: 'Applied Chemistry',                      author: 'V.K. Ahluwalia',         isbn: '978-8173719575', rack_location: 'Floor 5, Row C, Rack 2', is_available: true  },
+
+    // Electrical Engineering
+    { title: 'Electrical Technology',                  author: 'B.L. Theraja',            isbn: '978-8121927797', rack_location: 'Floor 6, Row A, Rack 1', is_available: false },
+    { title: 'Fundamentals of Electrical Engineering', author: 'D.P. Kothari',           isbn: '978-9353167128', rack_location: 'Floor 6, Row A, Rack 2', is_available: true  },
+
+    // Electronics
+    { title: 'Microelectronic Circuits',               author: 'Adel S. Sedra',           isbn: '978-0190853464', rack_location: 'Floor 6, Row B, Rack 1', is_available: true  },
+    { title: 'Digital Electronics',                    author: 'R.P. Jain',               isbn: '978-0071076648', rack_location: 'Floor 6, Row B, Rack 2', is_available: true  },
+
+    // Computer Science / Programming
+    { title: 'The C Programming Language',             author: 'Brian W. Kernighan',     isbn: '978-0131103627', rack_location: 'Floor 6, Row C, Rack 1', is_available: true  },
+    { title: 'Let Us C Solutions',                     author: 'Yashavant Kanetkar',      isbn: '978-8183331470', rack_location: 'Floor 6, Row C, Rack 2', is_available: false },
+
+    // Data Structures
+    { title: 'Data Structures and Algorithms',          author: 'Narasimha Karumanchi',   isbn: '978-8193245279', rack_location: 'Floor 7, Row A, Rack 1', is_available: true  },
+    { title: 'Data Structures Using C',                 author: 'Reema Thareja',          isbn: '978-0198099307', rack_location: 'Floor 7, Row A, Rack 2', is_available: true  },
+
+    // Object Oriented Programming
+    { title: 'Programming with Java',                  author: 'E. Balagurusamy',        isbn: '978-9353165278', rack_location: 'Floor 7, Row B, Rack 1', is_available: true  },
+    { title: 'Core Java: An Integrated Approach',      author: 'R. Nageswara Rao',       isbn: '978-9353167029', rack_location: 'Floor 7, Row B, Rack 2', is_available: false },
+
+    // Computer Networks / Operating Systems
+    { title: 'Computer Networks',                      author: 'Andrew S. Tanenbaum',    isbn: '978-0132126953', rack_location: 'Floor 7, Row C, Rack 1', is_available: true  },
+    { title: 'Operating System Concepts',              author: 'Abraham Silberschatz',   isbn: '978-1119456339', rack_location: 'Floor 7, Row C, Rack 2', is_available: true  },
+
+    // Database / Web Technology
+    { title: 'Database System Concepts',               author: 'Abraham Silberschatz',   isbn: '978-0078022159', rack_location: 'Floor 8, Row A, Rack 1', is_available: true  },
+    { title: 'Web Technologies',                       author: 'Uttam K. Roy',            isbn: '978-0198067897', rack_location: 'Floor 8, Row A, Rack 2', is_available: false },
   ];
 
   // Store references so we can link transactions to book IDs
@@ -89,13 +129,17 @@ async function seed() {
   console.log(`   ✅  Inserted ${books.length} books`);
 
   /* ── 3. Seed sample transactions (for checked-out books) ────────── */
-  // Books at index 3, 7, 12, 18 are marked is_available: false
-  const transactions = [
-    { bookIndex: 3,  studentId: 'STU-2024-001', issueDate: new Date('2026-08-15T10:00:00') },
-    { bookIndex: 7,  studentId: 'STU-2024-003', issueDate: new Date('2026-08-18T14:30:00') },
-    { bookIndex: 12, studentId: 'STU-2024-007', issueDate: new Date('2026-08-19T09:15:00') },
-    { bookIndex: 18, studentId: 'STU-2024-012', issueDate: new Date('2026-08-20T11:00:00') },
-  ];
+  // Find all books marked as is_available: false and create transactions for them
+  const transactions = [];
+  books.forEach((book, index) => {
+    if (!book.is_available) {
+      transactions.push({
+        bookIndex: index,
+        studentId: `STU-2024-${String(index + 1).padStart(3, '0')}`,
+        issueDate: new Date(new Date('2026-08-15T10:00:00').getTime() + index * 86400000)
+      });
+    }
+  });
 
   for (const txn of transactions) {
     await db.collection('transactions').add({

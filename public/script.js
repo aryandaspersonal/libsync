@@ -140,6 +140,11 @@
 
   /* ── Firebase Auth State Listener ───────────────────────────────── */
   auth.onAuthStateChanged((user) => {
+    // If on an admin route, let the admin logic handle this
+    if (window.location.pathname.startsWith('/admin')) {
+      return;
+    }
+
     if (user) {
       currentUser = user;
       isGuest = false;
@@ -526,8 +531,362 @@
   }
 
   function esc(str) {
+    if (str === null || str === undefined) return '';
     const d = document.createElement('div');
     d.textContent = str;
     return d.innerHTML;
   }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     ADMIN PORTAL LOGIC & ROUTING
+     ═══════════════════════════════════════════════════════════════════ */
+  
+  const adminLoginScreen = document.getElementById('admin-login-screen');
+  const adminPortalContainer = document.getElementById('admin-portal-container');
+  const adminLoginForm = document.getElementById('admin-login-form');
+  const adminAuthError = document.getElementById('admin-auth-error');
+  const backToUserBtn = document.getElementById('back-to-user-btn');
+  const adminLogoutBtn = document.getElementById('admin-logout-btn');
+  
+  const adminViewDashboard = document.getElementById('admin-view-dashboard');
+  const adminViewBooks = document.getElementById('admin-view-books');
+  const adminNavLinks = document.querySelectorAll('.admin-nav-link[data-admin-tab]');
+  
+  const adminBookModal = document.getElementById('admin-book-modal');
+  const adminBookForm = document.getElementById('admin-book-form');
+  const adminBookModalClose = document.getElementById('admin-book-modal-close');
+  const adminBookCancelBtn = document.getElementById('admin-book-cancel-btn');
+  const adminBookModalTitle = document.getElementById('admin-book-modal-title');
+  const adminSearchInput = document.getElementById('admin-search-input');
+  
+  const adminDeleteModal = document.getElementById('admin-delete-modal');
+  const adminDeleteCancelBtn = document.getElementById('admin-delete-cancel-btn');
+  const adminDeleteConfirmBtn = document.getElementById('admin-delete-confirm-btn');
+  const adminDeleteBookTitle = document.getElementById('admin-delete-book-title');
+  
+  let adminBooks = [];
+  let bookToDelete = null;
+
+  function initRouter() {
+    const path = window.location.pathname;
+    
+    // Hide everything initially
+    authScreen.classList.add('hidden');
+    appContainer.classList.add('hidden');
+    adminLoginScreen.classList.add('hidden');
+    adminPortalContainer.classList.add('hidden');
+
+    if (path.startsWith('/admin')) {
+      // It's an admin route
+      auth.onAuthStateChanged(user => {
+        if (user && user.email === 'admin@library.com') { // Hardcoded admin check
+          showAdminPortal(path);
+        } else {
+          // If not logged in as admin, force login
+          if (user) auth.signOut();
+          adminLoginScreen.classList.remove('hidden');
+        }
+      });
+    } else {
+      // Normal user route, managed by the original auth listener
+      if (currentUser) {
+        enterApp();
+      } else if (!isGuest) {
+        authScreen.classList.remove('hidden');
+      } else {
+        enterApp();
+      }
+    }
+  }
+
+  function showAdminPortal(path) {
+    adminPortalContainer.classList.remove('hidden');
+    if (path === '/admin/books') {
+      switchAdminTab('books');
+    } else {
+      switchAdminTab('dashboard'); // default to dashboard
+      window.history.replaceState({}, '', '/admin/dashboard');
+    }
+    fetchAdminBooks();
+  }
+
+  function switchAdminTab(tab) {
+    adminNavLinks.forEach(link => {
+      if (link.dataset.adminTab === tab) link.classList.add('active');
+      else link.classList.remove('active');
+    });
+
+    if (tab === 'dashboard') {
+      adminViewDashboard.classList.remove('hidden');
+      adminViewBooks.classList.add('hidden');
+      window.history.pushState({}, '', '/admin/dashboard');
+    } else if (tab === 'books') {
+      adminViewBooks.classList.remove('hidden');
+      adminViewDashboard.classList.add('hidden');
+      window.history.pushState({}, '', '/admin/books');
+    }
+  }
+
+  adminNavLinks.forEach(link => {
+    link.addEventListener('click', () => {
+      switchAdminTab(link.dataset.adminTab);
+    });
+  });
+
+  adminLoginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    adminAuthError.classList.add('hidden');
+    const email = document.getElementById('admin-login-email').value.trim();
+    const pass = document.getElementById('admin-login-password').value;
+    
+    if (email !== 'admin@library.com') {
+      adminAuthError.textContent = "Unauthorized email.";
+      adminAuthError.classList.remove('hidden');
+      return;
+    }
+
+    try {
+      await auth.signInWithEmailAndPassword(email, pass);
+    } catch (err) {
+      adminAuthError.textContent = friendlyAuthError(err);
+      adminAuthError.classList.remove('hidden');
+    }
+  });
+
+  adminLogoutBtn.addEventListener('click', async () => {
+    await auth.signOut();
+    window.location.href = '/admin/login';
+  });
+
+  backToUserBtn.addEventListener('click', () => {
+    window.location.href = '/';
+  });
+
+  // Intercept normal browser navigation
+  window.addEventListener('popstate', () => {
+    initRouter();
+  });
+
+  // Admin Books Fetch
+  async function fetchAdminBooks() {
+    try {
+      const snapshot = await db.collection('books').get();
+      adminBooks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      adminBooks.sort((a, b) => (a.title < b.title ? -1 : 1));
+      
+      updateDashboardStats();
+      renderAdminBooksTable();
+    } catch (err) {
+      console.error(err);
+      toast('Failed to load admin data', 'error');
+    }
+  }
+
+  function updateDashboardStats() {
+    document.getElementById('stat-total-books').textContent = adminBooks.length;
+    const available = adminBooks.filter(b => b.is_available).length;
+    document.getElementById('stat-available-books').textContent = available;
+    document.getElementById('stat-borrowed-books').textContent = adminBooks.length - available;
+    
+    // Total copies logic (default 1 if missing)
+    const totalCopies = adminBooks.reduce((sum, b) => sum + (parseInt(b.quantity) || 1), 0);
+    document.getElementById('stat-total-copies').textContent = totalCopies;
+
+    // Recent activity (latest 5)
+    const recentList = document.getElementById('admin-recent-list');
+    const sorted = [...adminBooks].sort((a, b) => {
+      const ta = a.created_at ? a.created_at.toMillis() : 0;
+      const tb = b.created_at ? b.created_at.toMillis() : 0;
+      return tb - ta;
+    });
+    
+    recentList.innerHTML = sorted.slice(0, 5).map(b => `
+      <li>
+        <strong>${esc(b.title)}</strong> added on ${b.created_at ? new Date(b.created_at.toDate()).toLocaleDateString() : 'Unknown'}
+      </li>
+    `).join('');
+  }
+
+  function renderAdminBooksTable() {
+    const tbody = document.getElementById('admin-books-tbody');
+    const emptyState = document.getElementById('admin-books-empty');
+    const q = adminSearchInput.value.toLowerCase().trim();
+    
+    let filtered = adminBooks;
+    if (q) {
+      filtered = filtered.filter(b => 
+        (b.title || '').toLowerCase().includes(q) || 
+        (b.author || '').toLowerCase().includes(q) || 
+        (b.isbn || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '';
+      emptyState.classList.remove('hidden');
+      return;
+    }
+    
+    emptyState.classList.add('hidden');
+    tbody.innerHTML = filtered.map(b => `
+      <tr>
+        <td>
+          <div style="font-weight:600">${esc(b.title)}</div>
+          <div style="font-size:0.8rem;color:var(--clr-text-secondary)">${esc(b.publisher || '')} ${esc(b.year || '')}</div>
+        </td>
+        <td>${esc(b.author)}</td>
+        <td>${esc(b.category || '-')}</td>
+        <td>${esc(b.isbn)}</td>
+        <td>
+          <span style="color:${b.is_available ? 'var(--clr-accent)' : 'var(--clr-danger)'}">
+            ${b.is_available ? 'Available' : 'Out'}
+          </span>
+          <div style="font-size:0.8rem;color:var(--clr-text-secondary)">
+             ${esc(b.available_qty || (b.is_available ? 1 : 0))} / ${esc(b.quantity || 1)}
+          </div>
+        </td>
+        <td>${esc(b.rack_location)}</td>
+        <td class="actions">
+          <button class="btn-edit" data-id="${b.id}">✏️ Edit</button>
+          <button class="btn-delete" data-id="${b.id}">🗑️ Delete</button>
+        </td>
+      </tr>
+    `).join('');
+
+    // Attach listeners
+    tbody.querySelectorAll('.btn-edit').forEach(btn => {
+      btn.addEventListener('click', () => openAdminBookModal(btn.dataset.id));
+    });
+    tbody.querySelectorAll('.btn-delete').forEach(btn => {
+      btn.addEventListener('click', () => openAdminDeleteModal(btn.dataset.id));
+    });
+  }
+
+  adminSearchInput.addEventListener('input', renderAdminBooksTable);
+
+  document.getElementById('admin-add-book-btn').addEventListener('click', () => {
+    openAdminBookModal();
+  });
+
+  function openAdminBookModal(id = null) {
+    adminBookForm.reset();
+    document.getElementById('admin-book-id').value = '';
+    adminBookModalTitle.textContent = 'Add New Book';
+    
+    if (id) {
+      const book = adminBooks.find(b => b.id === id);
+      if (book) {
+        adminBookModalTitle.textContent = 'Edit Book';
+        document.getElementById('admin-book-id').value = book.id;
+        document.getElementById('admin-book-title').value = book.title || '';
+        document.getElementById('admin-book-author').value = book.author || '';
+        document.getElementById('admin-book-isbn').value = book.isbn || '';
+        document.getElementById('admin-book-category').value = book.category || '';
+        document.getElementById('admin-book-publisher').value = book.publisher || '';
+        document.getElementById('admin-book-year').value = book.year || '';
+        document.getElementById('admin-book-cover').value = book.cover_url || '';
+        document.getElementById('admin-book-desc').value = book.description || '';
+        
+        document.getElementById('admin-book-qty').value = book.quantity || 1;
+        document.getElementById('admin-book-avail').value = book.available_qty || (book.is_available ? 1 : 0);
+        
+        // Parse "Floor 1, Row A, Rack 1" if available
+        const loc = book.rack_location || '';
+        const parts = loc.split(',').map(s => s.trim());
+        document.getElementById('admin-book-floor').value = parts[0] || '';
+        document.getElementById('admin-book-row').value = parts[1] || '';
+        document.getElementById('admin-book-rack').value = parts[2] || '';
+      }
+    }
+    
+    adminBookModal.classList.remove('hidden');
+  }
+
+  adminBookModalClose.addEventListener('click', () => adminBookModal.classList.add('hidden'));
+  adminBookCancelBtn.addEventListener('click', () => adminBookModal.classList.add('hidden'));
+
+  adminBookForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('admin-book-id').value;
+    
+    const qty = parseInt(document.getElementById('admin-book-qty').value) || 1;
+    const avail = parseInt(document.getElementById('admin-book-avail').value) || 0;
+    
+    if (avail > qty) {
+      toast('Available quantity cannot exceed total quantity.', 'error');
+      return;
+    }
+
+    const data = {
+      title: document.getElementById('admin-book-title').value.trim(),
+      author: document.getElementById('admin-book-author').value.trim(),
+      isbn: document.getElementById('admin-book-isbn').value.trim(),
+      category: document.getElementById('admin-book-category').value.trim(),
+      publisher: document.getElementById('admin-book-publisher').value.trim(),
+      year: parseInt(document.getElementById('admin-book-year').value) || null,
+      cover_url: document.getElementById('admin-book-cover').value.trim(),
+      description: document.getElementById('admin-book-desc').value.trim(),
+      quantity: qty,
+      available_qty: avail,
+      is_available: avail > 0,
+      rack_location: `${document.getElementById('admin-book-floor').value.trim()}, ${document.getElementById('admin-book-row').value.trim()}, ${document.getElementById('admin-book-rack').value.trim()}`
+    };
+
+    const saveBtn = document.getElementById('admin-book-save-btn');
+    saveBtn.disabled = true;
+
+    try {
+      if (id) {
+        await db.collection('books').doc(id).update(data);
+        toast('Book updated successfully!', 'success');
+      } else {
+        data.created_at = firebase.firestore.FieldValue.serverTimestamp();
+        await db.collection('books').add(data);
+        toast('Book added successfully!', 'success');
+      }
+      adminBookModal.classList.add('hidden');
+      await fetchAdminBooks(); // refresh list
+      if (!window.location.pathname.startsWith('/admin')) fetchBooks(); // if used in mixed context
+    } catch (err) {
+      console.error(err);
+      toast('Error saving book', 'error');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  function openAdminDeleteModal(id) {
+    bookToDelete = id;
+    const book = adminBooks.find(b => b.id === id);
+    if (!book) return;
+    
+    adminDeleteBookTitle.textContent = book.title;
+    adminDeleteModal.classList.remove('hidden');
+  }
+
+  adminDeleteCancelBtn.addEventListener('click', () => {
+    adminDeleteModal.classList.add('hidden');
+    bookToDelete = null;
+  });
+
+  adminDeleteConfirmBtn.addEventListener('click', async () => {
+    if (!bookToDelete) return;
+    adminDeleteConfirmBtn.disabled = true;
+    try {
+      await db.collection('books').doc(bookToDelete).delete();
+      toast('Book deleted.', 'success');
+      adminDeleteModal.classList.add('hidden');
+      await fetchAdminBooks();
+    } catch (err) {
+      console.error(err);
+      toast('Error deleting book', 'error');
+    } finally {
+      adminDeleteConfirmBtn.disabled = false;
+      bookToDelete = null;
+    }
+  });
+
+  // Call initRouter immediately to handle first load
+  initRouter();
+
 })();
