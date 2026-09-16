@@ -58,8 +58,10 @@
   let debounceTimer = null;
   let issueBookId = null;
   let currentUser = null;
+  let currentUserProfile = null;
   let isGuest = false;
   let bookmarks = new Set();
+  let userTransactions = {};
 
   /* ── Bookmark helpers ─────────────────────────────────────────────── */
   function getBookmarkKey() {
@@ -315,6 +317,7 @@
         if (userNameEl) userNameEl.textContent = '👑 Admin';
         if (userRegEl) userRegEl.textContent = currentUser.email;
       } else if (profileData && profileData.full_name) {
+        currentUserProfile = profileData;
         if (userNameEl) userNameEl.textContent = profileData.full_name;
         if (userRegEl) userRegEl.textContent = profileData.registration_number ? `ID: ${profileData.registration_number}` : currentUser.email;
       } else {
@@ -322,6 +325,7 @@
           const userDoc = await db.collection('users').doc(currentUser.uid).get();
           if (userDoc.exists) {
             const data = userDoc.data();
+            currentUserProfile = data;
             if (userNameEl) userNameEl.textContent = data.full_name || currentUser.email;
             if (userRegEl) userRegEl.textContent = data.registration_number ? `ID: ${data.registration_number}` : '';
           } else {
@@ -430,6 +434,25 @@
     try {
       showLoading(true);
 
+      userTransactions = {};
+      if (currentUser && !isGuest && currentUser.email !== 'admin@library.com') {
+        const studentIds = [currentUser.email];
+        if (currentUserProfile && currentUserProfile.registration_number) studentIds.push(currentUserProfile.registration_number);
+        if (currentUserProfile && currentUserProfile.full_name) studentIds.push(currentUserProfile.full_name);
+        
+        try {
+          const txnSnapshot = await db.collection('transactions')
+            .where('return_date', '==', null)
+            .where('student_id', 'in', studentIds)
+            .get();
+          txnSnapshot.forEach(doc => {
+            userTransactions[doc.data().book_id] = doc.data();
+          });
+        } catch (e) {
+          console.error("Error fetching user transactions:", e);
+        }
+      }
+
       const snapshot = await db.collection('books').get();
 
       let booksList = snapshot.docs.map((doc) => ({
@@ -514,11 +537,26 @@
     const bookmarkClass = isBookmarked ? 'bookmarked' : '';
     const bookmarkLabel = isBookmarked ? '🔖 Bookmarked' : '🔖 Bookmark';
 
+    // Check if the user has borrowed this book
+    const userTxn = userTransactions[book.id];
+    let userTxnInfo = '';
+    if (userTxn) {
+      const dueDateStr = userTxn.due_date ? new Date(userTxn.due_date.toDate()).toLocaleDateString() : 'Unknown';
+      const fineStr = userTxn.fine_amount ? `₹${userTxn.fine_amount}` : 'None';
+      userTxnInfo = `
+        <div style="margin-top: 12px; padding: 12px; background: rgba(56, 103, 214, 0.05); border: 1px solid rgba(56, 103, 214, 0.1); border-radius: 8px; font-size: 0.85rem;">
+          <div style="font-weight: 600; color: var(--clr-primary); margin-bottom: 4px;">📖 You borrowed this book</div>
+          <div style="display: flex; justify-content: space-between; color: var(--clr-text-secondary);">
+            <span><strong>Due Date:</strong> ${dueDateStr}</span>
+            <span style="color: ${userTxn.fine_amount ? 'var(--clr-danger)' : 'inherit'};"><strong>Fine:</strong> ${fineStr}</span>
+          </div>
+        </div>
+      `;
+    }
+
     // Action buttons based on role
     let actionButtons = '';
-    if (isAdmin && !available) {
-      actionButtons = `<button class="btn btn-return" data-action="return" data-id="${book.id}" data-title="${esc(book.title)}" id="return-btn-${book.id}">📥 Return Book</button>`;
-    } else if (isAuth && !available) {
+    if (isAuth && !available && !userTxn) {
       actionButtons = `<span class="guest-hint">📕 Currently Unavailable</span>`;
     } else if (!isAuth) {
       actionButtons = `<span class="guest-hint">🔒 Log in to bookmark books</span>`;
@@ -550,6 +588,7 @@
             <span class="loc-value">${esc(book.rack_location)}</span>
           </div>
         </div>
+        ${userTxnInfo}
 
         <div class="card-actions">
           ${actionButtons}
@@ -954,7 +993,15 @@
             <td style="color:var(--clr-danger);font-weight:bold;">${fine}</td>
             <td>${status}</td>
             <td>
-              ${!t.return_date ? `<button class="btn-edit btn-edit-due-date" data-id="${doc.id}" data-due="${t.due_date ? new Date(t.due_date.toDate()).toISOString().split('T')[0] : ''}">📅 Edit Due Date</button>` : '-'}
+              ${!t.return_date ? `
+                <button class="btn-edit btn-edit-due-date" data-id="${doc.id}" data-due="${t.due_date ? new Date(t.due_date.toDate()).toISOString().split('T')[0] : ''}" style="background: linear-gradient(to right, #cf9bc0, #3666d6); border: none; border-radius: 9999px; padding: 4px 4px 4px 12px; color: white; display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  Edit Due Date
+                  <span style="background: white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; color: #3666d6;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                  </span>
+                </button>
+                <button class="btn-edit btn-mark-returned" data-id="${doc.id}" data-book-id="${t.book_id}" style="margin-left: 8px; background: var(--clr-accent); color: var(--clr-bg); border: none;">✅ Mark Returned</button>
+              ` : '-'}
             </td>
           </tr>
         `;
@@ -966,6 +1013,36 @@
           document.getElementById('admin-edit-due-date-txn-id').value = btn.dataset.id;
           document.getElementById('admin-edit-due-date-input').value = btn.dataset.due;
           document.getElementById('admin-edit-due-date-modal').classList.remove('hidden');
+        });
+      });
+
+      // Attach event listeners for mark returned buttons
+      tbody.querySelectorAll('.btn-mark-returned').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Are you sure you want to mark this book as returned?')) return;
+          const txnId = btn.dataset.id;
+          const bookId = btn.dataset.bookId;
+          const originalText = btn.innerHTML;
+          btn.disabled = true;
+          btn.textContent = 'Saving...';
+          try {
+            await db.collection('transactions').doc(txnId).update({
+              return_date: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            if (bookId) {
+              await db.collection('books').doc(bookId).update({
+                is_available: true
+              });
+            }
+            toast('Book marked as returned!', 'success');
+            await fetchAdminRecords();
+            await fetchAdminBooks();
+          } catch (err) {
+            console.error('Mark returned error:', err);
+            toast('Failed to mark book as returned', 'error');
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+          }
         });
       });
     } catch (err) {
