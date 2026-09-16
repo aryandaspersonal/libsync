@@ -33,7 +33,7 @@
       <form id="login-form" class="auth-form" autocomplete="off">
         <div class="form-group">
           <label for="login-email">Email</label>
-          <input type="email" id="login-email" class="auth-input" placeholder="librarian@university.edu" required />
+          <input type="email" id="login-email" class="auth-input" placeholder="" required />
         </div>
         <div class="form-group">
           <label for="login-password">Password</label>
@@ -49,7 +49,7 @@
       <form id="signup-form" class="auth-form hidden" autocomplete="off">
         <div class="form-group">
           <label for="signup-email">Email</label>
-          <input type="email" id="signup-email" class="auth-input" placeholder="librarian@university.edu" required />
+          <input type="email" id="signup-email" class="auth-input" placeholder="" required />
         </div>
         <div class="form-group">
           <label for="signup-password">Password</label>
@@ -78,6 +78,32 @@
     </div>
   </div>
 
+  <!-- ─── Profile Completion (shown after first login) ──────────── -->
+  <div id="profile-screen" class="auth-screen hidden">
+    <div class="auth-card profile-card">
+      <div class="auth-brand">
+        <span class="auth-logo">📚</span>
+        <h1>Lib<span class="accent">Sync</span></h1>
+        <p class="auth-tagline">Complete Your Profile</p>
+      </div>
+      <form id="profile-form" class="auth-form" autocomplete="off">
+        <div class="form-group">
+          <label for="profile-name">Full Name</label>
+          <input type="text" id="profile-name" class="auth-input" placeholder="" required />
+        </div>
+        <div class="form-group">
+          <label for="profile-reg">Registration Number</label>
+          <input type="text" id="profile-reg" class="auth-input" placeholder="" required />
+        </div>
+        <div id="profile-error" class="auth-error hidden"></div>
+        <button type="submit" class="btn btn-primary btn-auth" id="profile-submit-btn">
+          <span class="btn-text">Save & Continue</span>
+          <span class="btn-loader hidden"></span>
+        </button>
+      </form>
+    </div>
+  </div>
+
   <!-- ─── Main App (hidden until auth / guest) ────────────────────── -->
   <div id="app-container" class="hidden">
 
@@ -90,7 +116,10 @@
             <h1>Lib<span class="accent">Sync</span></h1>
           </div>
           <div class="user-bar" id="user-bar">
-            <span class="user-email" id="user-email"></span>
+            <div class="user-info">
+              <span class="user-name" id="user-name"></span>
+              <span class="user-reg" id="user-reg"></span>
+            </div>
             <button class="btn btn-ghost btn-sm" id="logout-btn">Logout</button>
           </div>
           <div class="guest-bar hidden" id="guest-bar">
@@ -122,6 +151,7 @@
             <button class="pill active" data-filter="all" id="filter-all">All</button>
             <button class="pill" data-filter="available" id="filter-available">Available</button>
             <button class="pill" data-filter="checked-out" id="filter-checked-out">Checked Out</button>
+            <button class="pill" data-filter="bookmarked" id="filter-bookmarked">🔖 Bookmarked</button>
           </div>
         </div>
       </div>
@@ -148,7 +178,9 @@
         <h2 id="issue-modal-title">Issue Book</h2>
         <p id="issue-modal-book" class="modal-book-title"></p>
         <label for="student-id-input" class="modal-label">Student ID</label>
-        <input type="text" id="student-id-input" class="modal-input" placeholder="e.g. STU-2024-042" autocomplete="off" />
+        <input type="text" id="student-id-input" class="modal-input" placeholder="" autocomplete="off" />
+        <label for="student-name-input" class="modal-label">Student Name</label>
+        <input type="text" id="student-name-input" class="modal-input" placeholder="" autocomplete="off" />
         <div class="modal-actions">
           <button id="issue-cancel-btn" class="btn btn-ghost">Cancel</button>
           <button id="issue-confirm-btn" class="btn btn-primary">Confirm Issue</button>
@@ -202,10 +234,10 @@
       <nav class="admin-nav">
         <button class="admin-nav-link active" data-admin-tab="dashboard">📊 Dashboard</button>
         <button class="admin-nav-link" data-admin-tab="books">📚 Manage Books</button>
-        <button class="admin-nav-link" disabled title="Coming Soon">👥 Users</button>
-        <button class="admin-nav-link" disabled title="Coming Soon">🔖 Reservations</button>
-        <button class="admin-nav-link" disabled title="Coming Soon">📋 Borrowing Records</button>
-        <button class="admin-nav-link" disabled title="Coming Soon">⚙️ Settings</button>
+        <button class="admin-nav-link" data-admin-tab="users">👥 Users</button>
+        <button class="admin-nav-link" data-admin-tab="records">📋 Borrowing Records</button>
+        <button class="admin-nav-link" data-admin-tab="reservations">🔖 Reservations</button>
+        <button class="admin-nav-link" data-admin-tab="settings">⚙️ Settings</button>
       </nav>
       <div class="admin-sidebar-footer">
         <button class="btn btn-ghost btn-sm" id="admin-logout-btn">🚪 Logout</button>
@@ -281,6 +313,83 @@
           <div id="admin-books-empty" class="empty-state hidden">
             <p>No books found.</p>
           </div>
+        </div>
+      </section>
+
+      <!-- Users View -->
+      <section id="admin-view-users" class="admin-view hidden">
+        <header class="admin-header">
+          <h2>Manage Users</h2>
+        </header>
+        <div class="admin-table-container">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>User ID</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Joined Date</th>
+              </tr>
+            </thead>
+            <tbody id="admin-users-tbody">
+            </tbody>
+          </table>
+          <div id="admin-users-empty" class="empty-state hidden">
+            <p>No users found.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Borrowing Records View -->
+      <section id="admin-view-records" class="admin-view hidden">
+        <header class="admin-header">
+          <h2>Borrowing Records</h2>
+          <button class="btn btn-primary" id="admin-manual-issue-btn">+ Issue Book Manually</button>
+        </header>
+        <div class="admin-table-container">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Book Title</th>
+                <th>Student ID</th>
+                <th>Issue Date</th>
+                <th>Due Date</th>
+                <th>Return Date</th>
+                <th>Fine (₹)</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="admin-records-tbody">
+            </tbody>
+          </table>
+          <div id="admin-records-empty" class="empty-state hidden">
+            <p>No borrowing records found.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Reservations View -->
+      <section id="admin-view-reservations" class="admin-view hidden">
+        <header class="admin-header">
+          <h2>Reservations</h2>
+        </header>
+        <div class="empty-state">
+          <span class="empty-icon">🔖</span>
+          <h2>Coming Soon</h2>
+          <p>Reservations feature is under construction.</p>
+        </div>
+      </section>
+
+      <!-- Settings View -->
+      <section id="admin-view-settings" class="admin-view hidden">
+        <header class="admin-header">
+          <h2>Settings</h2>
+        </header>
+        <div class="empty-state">
+          <span class="empty-icon">⚙️</span>
+          <h2>Coming Soon</h2>
+          <p>Settings panel is under construction.</p>
         </div>
       </section>
 
@@ -381,6 +490,53 @@
           <button id="admin-delete-cancel-btn" class="btn btn-ghost">Cancel</button>
           <button id="admin-delete-confirm-btn" class="btn btn-danger">Yes, Delete</button>
         </div>
+      </div>
+    </div>
+
+    <!-- ─── Admin Manual Issue Modal ──────────────────────────────── -->
+    <div id="admin-manual-issue-modal" class="modal-overlay hidden" role="dialog">
+      <div class="modal">
+        <button class="modal-close" id="admin-manual-issue-close" aria-label="Close">&times;</button>
+        <h2>Issue Book Manually</h2>
+        <form id="admin-manual-issue-form" autocomplete="off">
+          <div class="form-group">
+            <label for="admin-issue-book-select">Select Book *</label>
+            <select id="admin-issue-book-select" class="modal-input" required>
+              <option value="">-- Choose a Book --</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="admin-issue-student-id">Student ID / Email *</label>
+            <input type="text" id="admin-issue-student-id" class="modal-input" placeholder="e.g. john@example.com" required />
+          </div>
+          <div class="form-group">
+            <label for="admin-issue-student-name">Student Name *</label>
+            <input type="text" id="admin-issue-student-name" class="modal-input" placeholder="e.g. John Doe" required />
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="admin-manual-issue-cancel-btn" class="btn btn-ghost">Cancel</button>
+            <button type="submit" id="admin-manual-issue-confirm-btn" class="btn btn-primary">Issue Book</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ─── Admin Edit Due Date Modal ─────────────────────────────── -->
+    <div id="admin-edit-due-date-modal" class="modal-overlay hidden" role="dialog">
+      <div class="modal">
+        <button class="modal-close" id="admin-edit-due-date-close" aria-label="Close">&times;</button>
+        <h2>Edit Due Date</h2>
+        <form id="admin-edit-due-date-form" autocomplete="off">
+          <input type="hidden" id="admin-edit-due-date-txn-id" />
+          <div class="form-group">
+            <label for="admin-edit-due-date-input">New Due Date *</label>
+            <input type="date" id="admin-edit-due-date-input" class="modal-input" required />
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="admin-edit-due-date-cancel-btn" class="btn btn-ghost">Cancel</button>
+            <button type="submit" id="admin-edit-due-date-confirm-btn" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
       </div>
     </div>
 

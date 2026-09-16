@@ -25,7 +25,15 @@
   const loginPromptBtn  = document.getElementById('login-prompt-btn');
   const userBar         = document.getElementById('user-bar');
   const guestBar        = document.getElementById('guest-bar');
-  const userEmailEl     = document.getElementById('user-email');
+  const userNameEl      = document.getElementById('user-name');
+  const userRegEl       = document.getElementById('user-reg');
+
+  /* ── DOM refs — Profile Completion ────────────────────────────────── */
+  const profileScreen   = document.getElementById('profile-screen');
+  const profileForm     = document.getElementById('profile-form');
+  const profileNameIn   = document.getElementById('profile-name');
+  const profileRegIn    = document.getElementById('profile-reg');
+  const profileError    = document.getElementById('profile-error');
 
   /* ── DOM refs — App ──────────────────────────────────────────────── */
   const searchInput     = document.getElementById('search-input');
@@ -41,6 +49,7 @@
   const issueConfirmBtn = document.getElementById('issue-confirm-btn');
   const issueBookTitle  = document.getElementById('issue-modal-book');
   const studentIdInput  = document.getElementById('student-id-input');
+  const studentNameInput = document.getElementById('student-name-input');
   const toastContainer  = document.getElementById('toast-container');
 
   /* ── State ───────────────────────────────────────────────────────── */
@@ -50,6 +59,39 @@
   let issueBookId = null;
   let currentUser = null;
   let isGuest = false;
+  let bookmarks = new Set();
+
+  /* ── Bookmark helpers ─────────────────────────────────────────────── */
+  function getBookmarkKey() {
+    return currentUser ? `libsync_bookmarks_${currentUser.uid}` : null;
+  }
+
+  function loadBookmarks() {
+    const key = getBookmarkKey();
+    if (!key) { bookmarks = new Set(); return; }
+    try {
+      const saved = localStorage.getItem(key);
+      bookmarks = saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { bookmarks = new Set(); }
+  }
+
+  function saveBookmarks() {
+    const key = getBookmarkKey();
+    if (!key) return;
+    localStorage.setItem(key, JSON.stringify([...bookmarks]));
+  }
+
+  function toggleBookmark(bookId) {
+    if (bookmarks.has(bookId)) {
+      bookmarks.delete(bookId);
+      toast('Bookmark removed', 'info');
+    } else {
+      bookmarks.add(bookId);
+      toast('Book bookmarked! 🔖', 'success');
+    }
+    saveBookmarks();
+    renderBooks();
+  }
 
   /* ═══════════════════════════════════════════════════════════════════
      AUTH LOGIC
@@ -83,7 +125,12 @@
 
     setAuthLoading(loginForm, true);
     try {
-      await auth.signInWithEmailAndPassword(email, pass);
+      const userCredential = await auth.signInWithEmailAndPassword(email, pass);
+      if (!userCredential.user.emailVerified && email !== 'admin@library.com') {
+        await auth.signOut();
+        showAuthError('Please verify your email before logging in. Check your inbox.');
+        return;
+      }
       // onAuthStateChanged will handle the rest
     } catch (err) {
       showAuthError(friendlyAuthError(err));
@@ -106,8 +153,17 @@
 
     setAuthLoading(signupForm, true);
     try {
-      await auth.createUserWithEmailAndPassword(email, pass);
-      // onAuthStateChanged will handle the rest
+      const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
+      await userCredential.user.sendEmailVerification();
+      // Save user to Firestore so admin can view them
+      await db.collection('users').doc(userCredential.user.uid).set({
+        email: email,
+        created_at: firebase.firestore.FieldValue.serverTimestamp(),
+        role: 'user'
+      });
+      await auth.signOut();
+      toast('Verification email sent! Please check your inbox.', 'info');
+      tabLogin.click();
     } catch (err) {
       showAuthError(friendlyAuthError(err));
     } finally {
@@ -135,6 +191,7 @@
     isGuest = false;
     currentUser = null;
     appContainer.classList.add('hidden');
+    profileScreen.classList.add('hidden');
     authScreen.classList.remove('hidden');
   });
 
@@ -145,30 +202,142 @@
       return;
     }
 
-    if (user) {
+    if (user && (user.emailVerified || user.email === 'admin@library.com')) {
       currentUser = user;
       isGuest = false;
-      enterApp();
+      checkProfileAndEnter();
+    } else if (user && !user.emailVerified) {
+      // Allow sign out to clear state
+      auth.signOut();
     } else if (!isGuest) {
       currentUser = null;
       // Show auth screen
       appContainer.classList.add('hidden');
+      profileScreen.classList.add('hidden');
       authScreen.classList.remove('hidden');
     }
   });
 
+  /* ── Profile check — ensure name & reg number exist ─────────────── */
+  async function checkProfileAndEnter() {
+    // Admin bypasses profile check
+    if (currentUser.email === 'admin@library.com') {
+      enterApp();
+      return;
+    }
+
+    try {
+      const userDoc = await db.collection('users').doc(currentUser.uid).get();
+      const data = userDoc.exists ? userDoc.data() : {};
+
+      if (data.full_name && data.registration_number) {
+        // Profile is complete — go to app
+        enterApp(data);
+      } else {
+        // Show profile completion screen
+        authScreen.classList.add('hidden');
+        appContainer.classList.add('hidden');
+        profileScreen.classList.remove('hidden');
+
+        // Pre-fill if partial data exists
+        if (data.full_name) profileNameIn.value = data.full_name;
+        if (data.registration_number) profileRegIn.value = data.registration_number;
+
+        setTimeout(() => profileNameIn.focus(), 100);
+      }
+    } catch (err) {
+      console.error('Profile check error:', err);
+      // If Firestore fails, still let them in
+      enterApp();
+    }
+  }
+
+  /* ── Profile form submit ────────────────────────────────────────── */
+  profileForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    profileError.classList.add('hidden');
+
+    const fullName = profileNameIn.value.trim();
+    const regNumber = profileRegIn.value.trim();
+
+    if (!fullName) {
+      profileError.textContent = 'Please enter your full name.';
+      profileError.classList.remove('hidden');
+      profileNameIn.focus();
+      return;
+    }
+    if (!regNumber) {
+      profileError.textContent = 'Please enter your registration number.';
+      profileError.classList.remove('hidden');
+      profileRegIn.focus();
+      return;
+    }
+
+    const submitBtn = profileForm.querySelector('.btn-auth');
+    const btnText = submitBtn.querySelector('.btn-text');
+    const btnLoader = submitBtn.querySelector('.btn-loader');
+    submitBtn.disabled = true;
+    btnText.textContent = 'Saving…';
+    btnLoader.classList.remove('hidden');
+
+    try {
+      await db.collection('users').doc(currentUser.uid).set({
+        email: currentUser.email,
+        full_name: fullName,
+        registration_number: regNumber,
+        updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      profileScreen.classList.add('hidden');
+      enterApp({ full_name: fullName, registration_number: regNumber });
+    } catch (err) {
+      console.error('Profile save error:', err);
+      profileError.textContent = 'Failed to save profile. Please try again.';
+      profileError.classList.remove('hidden');
+    } finally {
+      submitBtn.disabled = false;
+      btnText.textContent = 'Save & Continue';
+      btnLoader.classList.add('hidden');
+    }
+  });
+
   /* ── Enter the app ──────────────────────────────────────────────── */
-  function enterApp() {
+  async function enterApp(profileData = null) {
     authScreen.classList.add('hidden');
+    profileScreen.classList.add('hidden');
     appContainer.classList.remove('hidden');
 
     if (currentUser) {
       userBar.classList.remove('hidden');
       guestBar.classList.add('hidden');
-      userEmailEl.textContent = currentUser.email;
+
+      if (currentUser.email === 'admin@library.com') {
+        if (userNameEl) userNameEl.textContent = '👑 Admin';
+        if (userRegEl) userRegEl.textContent = currentUser.email;
+      } else if (profileData && profileData.full_name) {
+        if (userNameEl) userNameEl.textContent = profileData.full_name;
+        if (userRegEl) userRegEl.textContent = profileData.registration_number ? `ID: ${profileData.registration_number}` : currentUser.email;
+      } else {
+        try {
+          const userDoc = await db.collection('users').doc(currentUser.uid).get();
+          if (userDoc.exists) {
+            const data = userDoc.data();
+            if (userNameEl) userNameEl.textContent = data.full_name || currentUser.email;
+            if (userRegEl) userRegEl.textContent = data.registration_number ? `ID: ${data.registration_number}` : '';
+          } else {
+            if (userNameEl) userNameEl.textContent = currentUser.email;
+            if (userRegEl) userRegEl.textContent = '';
+          }
+        } catch (e) {
+          console.error('Error loading profile for header:', e);
+          if (userNameEl) userNameEl.textContent = currentUser.email;
+        }
+      }
+      loadBookmarks();
     } else {
       userBar.classList.add('hidden');
       guestBar.classList.remove('hidden');
+      bookmarks = new Set();
     }
 
     fetchBooks();
@@ -306,6 +475,8 @@
       filtered = filtered.filter((b) => b.is_available);
     } else if (activeFilter === 'checked-out') {
       filtered = filtered.filter((b) => !b.is_available);
+    } else if (activeFilter === 'bookmarked') {
+      filtered = filtered.filter((b) => bookmarks.has(b.id));
     }
 
     // Update count
@@ -336,15 +507,26 @@
     const badgeClass = available ? 'badge-available' : 'badge-checked-out';
     const badgeText  = available ? 'Present on Shelf' : 'Checked Out';
     const isAuth = !!currentUser;
+    const isAdmin = currentUser && currentUser.email === 'admin@library.com';
 
-    // Only show action buttons if user is authenticated (not guest)
+    // Bookmark state for this book
+    const isBookmarked = bookmarks.has(book.id);
+    const bookmarkClass = isBookmarked ? 'bookmarked' : '';
+    const bookmarkLabel = isBookmarked ? '🔖 Bookmarked' : '🔖 Bookmark';
+
+    // Action buttons based on role
     let actionButtons = '';
-    if (isAuth && available) {
-      actionButtons = `<button class="btn btn-issue" data-action="issue" data-id="${book.id}" data-title="${esc(book.title)}" id="issue-btn-${book.id}">📤 Issue Book</button>`;
-    } else if (isAuth && !available) {
+    if (isAdmin && !available) {
       actionButtons = `<button class="btn btn-return" data-action="return" data-id="${book.id}" data-title="${esc(book.title)}" id="return-btn-${book.id}">📥 Return Book</button>`;
+    } else if (isAuth && !available) {
+      actionButtons = `<span class="guest-hint">📕 Currently Unavailable</span>`;
     } else if (!isAuth) {
-      actionButtons = `<span class="guest-hint">🔒 Log in to issue/return</span>`;
+      actionButtons = `<span class="guest-hint">🔒 Log in to bookmark books</span>`;
+    }
+
+    // Add bookmark button for all logged-in users
+    if (isAuth) {
+      actionButtons = `<button class="btn btn-bookmark ${bookmarkClass}" data-action="bookmark" data-id="${book.id}" id="bookmark-btn-${book.id}">${bookmarkLabel}</button>` + (actionButtons ? `\n${actionButtons}` : '');
     }
 
     return `
@@ -387,6 +569,8 @@
       openIssueModal(bookId, title);
     } else if (action === 'return') {
       returnBook(bookId);
+    } else if (action === 'bookmark') {
+      toggleBookmark(bookId);
     }
   }
 
@@ -395,6 +579,7 @@
     issueBookId = bookId;
     issueBookTitle.textContent = title;
     studentIdInput.value = '';
+    studentNameInput.value = '';
     issueModal.classList.remove('hidden');
     setTimeout(() => studentIdInput.focus(), 100);
   }
@@ -406,9 +591,15 @@
 
   async function confirmIssue() {
     const studentId = studentIdInput.value.trim();
+    const studentName = studentNameInput.value.trim();
     if (!studentId) {
       toast('Please enter a Student ID', 'error');
       studentIdInput.focus();
+      return;
+    }
+    if (!studentName) {
+      toast('Please enter a Student Name', 'error');
+      studentNameInput.focus();
       return;
     }
 
@@ -437,13 +628,23 @@
         // Mark book as unavailable
         transaction.update(bookRef, { is_available: false });
 
+        // Calculate due date (14 days from now)
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 14);
+
         // Create transaction record
         const txnRef = db.collection('transactions').doc();
         transaction.set(txnRef, {
-          book_id:     issueBookId,
-          student_id:  studentId,
-          issue_date:  firebase.firestore.FieldValue.serverTimestamp(),
-          return_date: null,
+          book_id:      issueBookId,
+          student_id:   studentId,
+          student_name: studentName,
+          issue_date:   firebase.firestore.FieldValue.serverTimestamp(),
+          due_date:     firebase.firestore.Timestamp.fromDate(dueDate),
+          return_date:  null,
+          warning_sent: false,
+          warning_date: null,
+          fine_applied: false,
+          fine_amount:  0,
         });
       });
 
@@ -489,7 +690,6 @@
       const txnSnapshot = await db.collection('transactions')
         .where('book_id', '==', bookId)
         .where('return_date', '==', null)
-        .orderBy('issue_date', 'desc')
         .limit(1)
         .get();
 
@@ -550,6 +750,10 @@
   
   const adminViewDashboard = document.getElementById('admin-view-dashboard');
   const adminViewBooks = document.getElementById('admin-view-books');
+  const adminViewUsers = document.getElementById('admin-view-users');
+  const adminViewRecords = document.getElementById('admin-view-records');
+  const adminViewReservations = document.getElementById('admin-view-reservations');
+  const adminViewSettings = document.getElementById('admin-view-settings');
   const adminNavLinks = document.querySelectorAll('.admin-nav-link[data-admin-tab]');
   
   const adminBookModal = document.getElementById('admin-book-modal');
@@ -600,9 +804,11 @@
   }
 
   function showAdminPortal(path) {
+    adminLoginScreen.classList.add('hidden');
     adminPortalContainer.classList.remove('hidden');
-    if (path === '/admin/books') {
-      switchAdminTab('books');
+    const tab = path.replace('/admin/', '') || 'dashboard';
+    if (['dashboard', 'books', 'users', 'records', 'reservations', 'settings'].includes(tab)) {
+      switchAdminTab(tab);
     } else {
       switchAdminTab('dashboard'); // default to dashboard
       window.history.replaceState({}, '', '/admin/dashboard');
@@ -616,14 +822,25 @@
       else link.classList.remove('active');
     });
 
-    if (tab === 'dashboard') {
-      adminViewDashboard.classList.remove('hidden');
-      adminViewBooks.classList.add('hidden');
-      window.history.pushState({}, '', '/admin/dashboard');
-    } else if (tab === 'books') {
-      adminViewBooks.classList.remove('hidden');
-      adminViewDashboard.classList.add('hidden');
-      window.history.pushState({}, '', '/admin/books');
+    const views = {
+      dashboard: adminViewDashboard,
+      books: adminViewBooks,
+      users: adminViewUsers,
+      records: adminViewRecords,
+      reservations: adminViewReservations,
+      settings: adminViewSettings
+    };
+
+    Object.values(views).forEach(view => {
+      if (view) view.classList.add('hidden');
+    });
+
+    if (views[tab]) {
+      views[tab].classList.remove('hidden');
+      window.history.pushState({}, '', `/admin/${tab}`);
+      
+      if (tab === 'users') fetchAdminUsers();
+      if (tab === 'records') fetchAdminRecords();
     }
   }
 
@@ -666,6 +883,96 @@
   window.addEventListener('popstate', () => {
     initRouter();
   });
+  // Admin Users Fetch
+  async function fetchAdminUsers() {
+    try {
+      const snapshot = await db.collection('users').get();
+      const tbody = document.getElementById('admin-users-tbody');
+      const emptyState = document.getElementById('admin-users-empty');
+
+      if (snapshot.empty) {
+        tbody.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+      tbody.innerHTML = snapshot.docs.map(doc => {
+        const u = doc.data();
+        const date = u.created_at ? new Date(u.created_at.toDate()).toLocaleDateString() : 'Unknown';
+        return `
+          <tr>
+            <td>${doc.id}</td>
+            <td>${esc(u.email)}</td>
+            <td><span style="color:var(--clr-accent)">${esc(u.role || 'user')}</span></td>
+            <td>${date}</td>
+          </tr>
+        `;
+      }).join('');
+    } catch (err) {
+      console.error(err);
+      toast('Failed to load users', 'error');
+    }
+  }
+
+  // Admin Borrowing Records Fetch
+  async function fetchAdminRecords() {
+    try {
+      if (adminBooks.length === 0) {
+        const snapshot = await db.collection('books').get();
+        adminBooks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      }
+
+      const snapshot = await db.collection('transactions').orderBy('issue_date', 'desc').get();
+      const tbody = document.getElementById('admin-records-tbody');
+      const emptyState = document.getElementById('admin-records-empty');
+
+      if (snapshot.empty) {
+        tbody.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+      tbody.innerHTML = snapshot.docs.map(doc => {
+        const t = doc.data();
+        const book = adminBooks.find(b => b.id === t.book_id);
+        const title = book ? book.title : 'Unknown Book';
+        const issueDate = t.issue_date ? new Date(t.issue_date.toDate()).toLocaleDateString() : 'Unknown';
+        const dueDate = t.due_date ? new Date(t.due_date.toDate()).toLocaleDateString() : 'Unknown';
+        const returnDate = t.return_date ? new Date(t.return_date.toDate()).toLocaleDateString() : '-';
+        const fine = t.fine_amount ? `₹${t.fine_amount}` : '-';
+        const status = t.return_date ? '<span style="color:var(--clr-accent)">Returned</span>' : '<span style="color:var(--clr-danger)">Checked Out</span>';
+
+        return `
+          <tr>
+            <td style="font-weight:600">${esc(title)}</td>
+            <td>${esc(t.student_id)}</td>
+            <td>${issueDate}</td>
+            <td>${dueDate}</td>
+            <td>${returnDate}</td>
+            <td style="color:var(--clr-danger);font-weight:bold;">${fine}</td>
+            <td>${status}</td>
+            <td>
+              ${!t.return_date ? `<button class="btn-edit btn-edit-due-date" data-id="${doc.id}" data-due="${t.due_date ? new Date(t.due_date.toDate()).toISOString().split('T')[0] : ''}">📅 Edit Due Date</button>` : '-'}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Attach event listeners for edit due date buttons
+      tbody.querySelectorAll('.btn-edit-due-date').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.getElementById('admin-edit-due-date-txn-id').value = btn.dataset.id;
+          document.getElementById('admin-edit-due-date-input').value = btn.dataset.due;
+          document.getElementById('admin-edit-due-date-modal').classList.remove('hidden');
+        });
+      });
+    } catch (err) {
+      console.error(err);
+      toast('Failed to load borrowing records', 'error');
+    }
+  }
 
   // Admin Books Fetch
   async function fetchAdminBooks() {
@@ -883,6 +1190,132 @@
     } finally {
       adminDeleteConfirmBtn.disabled = false;
       bookToDelete = null;
+    }
+  });
+
+  // ─── Admin Manual Issue Logic ────────────────────────────────────
+  const adminManualIssueBtn = document.getElementById('admin-manual-issue-btn');
+  const adminManualIssueModal = document.getElementById('admin-manual-issue-modal');
+  const adminManualIssueForm = document.getElementById('admin-manual-issue-form');
+  const adminManualIssueClose = document.getElementById('admin-manual-issue-close');
+  const adminManualIssueCancelBtn = document.getElementById('admin-manual-issue-cancel-btn');
+  const adminIssueBookSelect = document.getElementById('admin-issue-book-select');
+
+  adminManualIssueBtn?.addEventListener('click', () => {
+    // Populate select with available books
+    adminIssueBookSelect.innerHTML = '<option value="">-- Choose an Available Book --</option>';
+    const availableBooks = adminBooks.filter(b => b.is_available);
+    availableBooks.forEach(b => {
+      const option = document.createElement('option');
+      option.value = b.id;
+      option.textContent = `${b.title} (by ${b.author})`;
+      adminIssueBookSelect.appendChild(option);
+    });
+    
+    adminManualIssueForm.reset();
+    adminManualIssueModal.classList.remove('hidden');
+  });
+
+  const closeAdminIssueModal = () => adminManualIssueModal.classList.add('hidden');
+  adminManualIssueClose?.addEventListener('click', closeAdminIssueModal);
+  adminManualIssueCancelBtn?.addEventListener('click', closeAdminIssueModal);
+
+  adminManualIssueForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const bookId = adminIssueBookSelect.value;
+    const studentId = document.getElementById('admin-issue-student-id').value.trim();
+    const studentName = document.getElementById('admin-issue-student-name').value.trim();
+    
+    if (!bookId || !studentId || !studentName) {
+      toast('Please fill all fields', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('admin-manual-issue-confirm-btn');
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+
+    try {
+      const bookRef = db.collection('books').doc(bookId);
+
+      await db.runTransaction(async (transaction) => {
+        const bookDoc = await transaction.get(bookRef);
+        if (!bookDoc.exists || !bookDoc.data().is_available) {
+          throw new Error('Book is no longer available');
+        }
+
+        // Mark book as unavailable
+        transaction.update(bookRef, { is_available: false });
+
+        // Calculate due date (14 days from now)
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 14);
+
+        // Create transaction record
+        const txnRef = db.collection('transactions').doc();
+        transaction.set(txnRef, {
+          book_id: bookId,
+          student_id: studentId,
+          student_name: studentName,
+          issue_date: firebase.firestore.FieldValue.serverTimestamp(),
+          due_date: firebase.firestore.Timestamp.fromDate(dueDate),
+          return_date: null,
+          warning_sent: false,
+          warning_date: null,
+          fine_applied: false,
+          fine_amount: 0,
+          issued_by: 'admin_manual'
+        });
+      });
+
+      toast('Book manually issued!', 'success');
+      closeAdminIssueModal();
+      await fetchAdminBooks(); // refresh admin state & dashboard stats
+      await fetchAdminRecords(); // refresh records table
+    } catch (err) {
+      console.error('Manual Issue error:', err);
+      toast(err.message || 'Error issuing book', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Issue Book';
+    }
+  });
+
+  // ─── Admin Edit Due Date Logic ───────────────────────────────────
+  const adminEditDueDateModal = document.getElementById('admin-edit-due-date-modal');
+  const adminEditDueDateForm = document.getElementById('admin-edit-due-date-form');
+  const adminEditDueDateClose = document.getElementById('admin-edit-due-date-close');
+  const adminEditDueDateCancelBtn = document.getElementById('admin-edit-due-date-cancel-btn');
+
+  const closeAdminEditDueDateModal = () => adminEditDueDateModal.classList.add('hidden');
+  adminEditDueDateClose?.addEventListener('click', closeAdminEditDueDateModal);
+  adminEditDueDateCancelBtn?.addEventListener('click', closeAdminEditDueDateModal);
+
+  adminEditDueDateForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const txnId = document.getElementById('admin-edit-due-date-txn-id').value;
+    const newDueDateStr = document.getElementById('admin-edit-due-date-input').value;
+    
+    if (!txnId || !newDueDateStr) return;
+
+    const btn = document.getElementById('admin-edit-due-date-confirm-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+      const newDueDate = new Date(newDueDateStr);
+      await db.collection('transactions').doc(txnId).update({
+        due_date: firebase.firestore.Timestamp.fromDate(newDueDate)
+      });
+      toast('Due date updated!', 'success');
+      closeAdminEditDueDateModal();
+      await fetchAdminRecords();
+    } catch (err) {
+      console.error(err);
+      toast('Failed to update due date', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save Changes';
     }
   });
 
